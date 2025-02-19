@@ -38,7 +38,7 @@ spot_detector = HDoGDetector()
 time_steps_to_plot = [5, 10, 15]
 fig, axes = plt.subplots(1, len(time_steps_to_plot), figsize=(15, 5))
 for idx, t in enumerate(time_steps_to_plot):
-    blobs, num_blobs, hess_mat = spot_detector.detect(data[t])
+    blobs, num_blobs = spot_detector.detect(data[t])
     slice_data = blobs[:,:,10]
 
     axes[idx].imshow(slice_data, extent=(-10, 10, -10, 10), origin='lower', cmap='viridis')

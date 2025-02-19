@@ -33,14 +33,14 @@ class DetectorBase(ABC):
         Detect spots from input data.
 
         Parameters:
-        - data: Input data (e.g., an image, sensor readings)
+        - data: Input data
 
         Returns:
-        - List of detected spots (format depends on implementation)
+        - Masked data where each blob is labeled with integer >= 1
         """
         pass
 
-# Example implementation of a simple spot detector
+
 class HDoGDetector(DetectorBase):
     """
     A Hessian-based Difference-of-Gaussian spot detector.
@@ -61,16 +61,58 @@ class HDoGDetector(DetectorBase):
         Dummy detection method.
 
         Parameters:
-        - data: Input data (e.g., a list of points)
+        - data: Input data
 
         Returns:
         - Masked data where each blob is labeled with integer >= 1
         """
         return detectBlobHDoG(data,self.sigmas,self.dsigmas,self.use_gaussian_derivatives)
 
+class ThresholdingDetector(DetectorBase):
+    """
+    A thresholding spot detector.
+    """
+    def __init__(self, threshold=5):
+        """
+        Initialize the detector with threhsold parameter
+        """
+        super().__init__(threshold=threshold)  # Store in base class dictionary
+        self.threshold = threshold # Store in subclass
+        
+    def detect(self, data):
+        """
+        Dummy detection method.
 
+        Parameters:
+        - data: Input data
+
+        Returns:
+        - Masked data where each blob is labeled with integer >= 1
+        """
+        return thresholdingDetection(data,self.threshold)
 
 ####################### Functions ##############################
+def thresholdingDetection(data,threshold):
+    """
+    Threshold data and applies connected components labeling
+
+    Parameters:
+    -----------
+    data : ndarray
+        Input 3D data.
+
+    Returns:
+    --------
+    tuple
+        - blobs : ndarray
+            Labeled blob regions.
+        - num_blobs : int
+            Number of blobs detected.
+    """   
+    data[data < threshold] = 0
+    return label(data)
+
+
 def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
     """
     Detects blobs using the Hessian-based Difference of Gaussians (DoG) method.
@@ -112,7 +154,7 @@ def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
 
     posDefIndicator = (D1 > 0) & (D2 > 0) & (D3 > 0)
     blobs, num_blobs = label(posDefIndicator)
-    return blobs, num_blobs, hess_mat
+    return blobs, num_blobs
 
 def DoG(x, sigma, dsigma, gamma=2):
     """
