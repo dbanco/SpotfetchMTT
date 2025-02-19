@@ -1,0 +1,58 @@
+# -*- coding: utf-8 -*-
+"""
+mtt_framework
+
+Description:
+Module for tracking x-ray diffraction spots in 3D using mulitple hypotheses test
+multitarget tracking
+Created on Tue Feb 18 09:59:02 2025
+
+@author: dpqb1
+"""
+
+class MTTSystem:
+    """
+    Multi-Target Tracking System that integrates modular components for:
+    - Spot detection
+    - State modeling
+    - Tracking
+    """
+
+    def __init__(self, spot_detector, feature_extractor, state_model, tracker):
+        """
+        Initializes the MTT system with user-defined components.
+
+        Parameters:
+        - spot_detector: An instance of a spot detection module.
+        - feature_extractor: An instance of a feature extractor.
+        - state_model: An instance of a state model for tracking.
+        - tracker: An instance of a tracking algorithm (e.g., MHT).
+        """
+        self.spot_detector = spot_detector
+        self.feature_extractor = feature_extractor
+        self.state_model = state_model
+        self.tracker = tracker
+    
+    def process_frame(self, frame):
+        """
+        Processes a single frame of data through the MTT pipeline.
+
+        Parameters:
+        - frame: The input data frame containing detection information.
+
+        Returns:
+        - tracks: The updated set of tracked objects.
+        """
+        # Step 1: Detect spots in the current frame
+        blobs = self.spot_detector.detect(frame)
+        
+        # Step 2: Reduce pixel detections to measurements
+        measurements = self.state_model.get_measurements(frame,blobs)
+        
+        # Step 3: Run tracker
+        self.tracker.process_measurements(measurements)
+        
+        # Step 4: Generate predictions
+  
+
+
