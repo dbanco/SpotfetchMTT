@@ -106,3 +106,95 @@ def find_bounding_box(mask):
   ome_min, ome_max = np.where(tubs)[0][[0, -1]]
   
   return tth_min, tth_max, eta_min, eta_max, ome_min, ome_max
+
+
+def compute_intensity(x):
+    """
+    Calculate total intensity of the spot
+
+    Parameters
+    ----------
+    x input : ndarray
+        Data from which to calculate total intensity. 
+
+    Returns
+    -------
+    intensity : float
+    The total intensity computed as the sum of all values in x.
+    """
+    
+    intensity = np.sum(x)
+    
+    return intensity
+
+def compute_velocity(prev_com, curr_com, dt=1):
+    """
+    compute the velocity og the com for a blob across two consecutive time step
+
+    Parameters
+    ----------
+    prev_com : tuple or array
+        The Center of mass at the previous time step
+    curr_com : tuple or array
+        The positio of the center of mass at the current timestep
+    dt : float, optional
+        The default is 1.
+
+    Returns
+    -------
+    velocities : tuple 
+        The velocity between two time step in each tth, eta, and 
+        omega dimension.
+
+    """
+    #change in position
+    com_change= np.array(curr_com) - np.array(prev_com)
+    velocity= com_change / dt
+    
+    
+    return velocity
+
+
+def compute_acc(prev_com, curr_com, dt=1):
+    """
+    compute the acceleration of the com for a blob across two consecutive time step
+
+    Parameters
+    ----------
+    prev_com : tuple or array
+        The Center of mass at the previous time step
+    curr_com : tuple or array
+        The positio of the center of mass at the current timestep
+    dt : float, optional
+        The default is 1.
+
+    Returns
+    -------
+    acceleration : tuple 
+        The acceleration between two time step in each tth, eta, and 
+        omega dimension.
+
+    """
+    return
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
