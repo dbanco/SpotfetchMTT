@@ -9,11 +9,11 @@ Created on Tue Feb 18 16:46:03 2025
 """
 import numpy as np
 
-
 class HypothesisNode:
-    def __init__(self, track_id, state, parent=None, cost=0):
+    def __init__(self, track_id, state, scan, parent=None, cost=0):
         self.track_id = track_id
         self.state = state
+        self.scan = scan
         self.parent = parent
         self.children = []
         self.cost = cost
@@ -26,12 +26,12 @@ class HypothesisTree:
         self.root = None
         self.nodes = {}
 
-    def add_node(self, track_id, state, parent_id=None, cost=0):
+    def add_node(self, track_id, state, scan, parent_id=None, cost=0):
       
         if parent_id is None:
             if self.root is not None:
                 raise ValueError("Root node already exists")
-            new_node = HypothesisNode(track_id, state, cost=cost)
+            new_node = HypothesisNode(track_id, state, scan, cost=cost)
             self.root = new_node
             self.nodes[track_id] = new_node
         else:
@@ -53,7 +53,6 @@ class HypothesisTree:
         best_node = None
         min_cost = float('inf')
 
-        
         def traverse(node, current_cost):
             nonlocal best_node, min_cost
             current_cost += node.cost
@@ -77,28 +76,41 @@ class HypothesisTree:
 class MHTTracker:
     """Multiple Hypothesis Tracker for 3D spot tracking."""
     
-    def __init__(self, gating_threshold=5.0):
+    def __init__(self, state_model, tracks=[], gating_threshold=5.0):
         """
         Initialize the tracker.
         
         Parameters:
+        - tracks (list of track hypothesis trees)
         - gating_threshold (float): Threshold for Mahalanobis distance gating.
         """
+        self.tracks = tracks
+        self.gating_threshold = gating_threshold
+        self.state_model = state_model
         pass
 
-    def gating(self, detections):
+    def gating(self, measurements):
         """
         Perform gating by filtering unlikely measurement-track associations.
         
         Parameters:
-        - detections (list of Detection): List of detected spots.
+        - measurements (list of measurements)
         
         Returns:
-        - list of lists: Each sublist contains gated detections for a track.
+        - m2ta_matrix (np.array)
         """
+        self.m2ta_matrix = np.zeros(len(measurements),len(self.tracks))
+        
+        for k, track in enumerate(self.tracks):
+            for m, measurement in enumerate(measurements):
+                diff = measurement.position - track.position
+                mahal_dist = np.multiply(diff.transpose(),diff)
+                if mahal_dist < self.gating_threhsold:
+                    self.m2ta_matrix[m,k] = 1
+        
         pass
 
-    def generate_hypotheses(self, detections):
+    def generate_hypotheses(self):
         """
         Generate association hypotheses between existing tracks and new detections.
         
@@ -108,6 +120,9 @@ class MHTTracker:
         Returns:
         - list of tuples: Each tuple represents a hypothesis (track, detection).
         """
+        
+        for i, track in enumerate(self.tracks):
+            update_hypothesis_tree(track, self.m2ta_matrix, measurements , euclidean_cost)
         pass
 
     def associate_measurements(self, detections):
@@ -139,10 +154,18 @@ class MHTTracker:
         - detections (list of Detection): List of detected spots at the current time step.
         """
         pass
+    
+    def process_measurements(self, measurements):
+        """
+        Takes ikn measurements, associates them with tracks, generates
+        hypothesis trees, identifies best global hypothesis, updates state
+        """
+        
+        
 
 def initialize_hypothesis_tree(measurements):
     """
-    Initializes the hypothesis tree with multiple measurements.
+    Initializes the hypothesis trees with multiple measurements.
 
     Parameters:
     - measurements: List of 3D numpy arrays representing initial measurements.
@@ -161,35 +184,6 @@ def initialize_hypothesis_tree(measurements):
         tree.add_node(track_id, measurement, parent_id=-1)
 
     return tree
-
-
-# def construct_hypothesis_tree(m2ta_matrix):
-#     """
-#     Constructs a hypothesis tree from a measurement-to-track association (M2TA) matrix.
-#     Each measurement can be assigned to multiple tracks, and new tracks can be created.
-#     """
-#     num_measurements, num_tracks = m2ta_matrix.shape
-#     tree = HypothesisTree()
-#     tree.add_node("root", state="start")  # Root node
-    
-#     # Recursive function to build the hypothesis tree
-#     def expand_hypothesis(node, measurement_idx):
-#         if measurement_idx >= num_measurements:
-#             return  # Stop when all measurements are processed
-        
-#         for track_id in range(num_tracks):
-#             if m2ta_matrix[measurement_idx, track_id] == 1:
-#                 new_state = f"M{measurement_idx} -> T{track_id}"
-#                 tree.add_node(f"{measurement_idx}_{track_id}", state=new_state, parent_id=node.track_id, cost=np.random.rand())
-#                 expand_hypothesis(tree.get_node(f"{measurement_idx}_{track_id}"), measurement_idx + 1)
-                
-#         # Consider a new track hypothesis
-#         new_track_state = f"M{measurement_idx} -> NewTrack"
-#         tree.add_node(f"{measurement_idx}_new", state=new_track_state, parent_id=node.track_id, cost=np.random.rand())
-#         expand_hypothesis(tree.get_node(f"{measurement_idx}_new"), measurement_idx + 1)
-    
-#     expand_hypothesis(tree.root, 0)
-#     return tree
 
 def update_hypothesis_tree(tree, m2ta_matrix, new_measurements, cost_function):
     """
@@ -218,8 +212,8 @@ def update_hypothesis_tree(tree, m2ta_matrix, new_measurements, cost_function):
 
         if associated_tracks.size > 0:
             # Existing track hypotheses extension
-            for track_id in associated_tracks:
-                parent_node = tree.get_node(track_id)
+            for k in associated_tracks:
+                parent_node = self.tracks[k].get_node(k)
                 if parent_node:
                     cost = cost_function(parent_node.state, measurement)
                     tree.add_node(new_track_id, measurement, parent_id=track_id, cost=cost)
@@ -255,7 +249,24 @@ def visualize_hypothesis_tree(hypothesis_tree):
     add_edges(hypothesis_tree.root)
 
     plt.figure(figsize=(10, 6))
+    # pos = nx.drawing.nx_pydot.graphviz_layout(hypothesis_tree, prog='dot')
     pos = nx.spring_layout(G, seed=42)  # Position nodes for a visually appealing layout
     nx.draw(G, pos, with_labels=True, node_size=2000, node_color="lightblue", edge_color="gray", font_size=10, font_weight="bold", arrowsize=12)
     plt.title("Hypothesis Tree Visualization")
     plt.show()
+    
+def euclidean_cost(state, measurement, association_cost=0):
+    """
+    Compute the Euclidean distance between a track state and a measurement,
+    incorporating an optional association cost.
+
+    Parameters:
+    - state: 3D NumPy array representing the track's current position [x, y, z].
+    - measurement: 3D NumPy array representing the new measurement [x, y, z].
+    - association_cost: Additional cost from the M2TA matrix (default: 0).
+
+    Returns:
+    - Computed cost (float).
+    """
+    distance = np.linalg.norm(state - measurement)  # Euclidean distance
+    return distance + association_cost

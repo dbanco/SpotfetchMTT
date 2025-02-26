@@ -163,48 +163,6 @@ class BasicModel(StateModel):
         new_state['position'] = new_position
         return new_state
 
-
-# Subclass 2: Example of a constant acceleration model
-class ConstantAccelerationStateModel(StateModel):
-    """
-    A state model that assumes constant acceleration between measurements.
-    """
-    
-    def update_state(self, measurement):
-        """
-        Update the state based on a new measurement.
-        
-        Parameters:
-        - measurement (dict): The new measurement to update the state.
-        
-        Returns:
-        - dict: Updated state.
-        """
-        # Simple example: Update state with measurement directly
-        self.state['position'] = measurement['position']
-        self.state['velocity'] = measurement['velocity']
-        self.state['acceleration'] = measurement['acceleration']
-        return self.state
-    
-    def transition(self, state, dt):
-        """
-        Transition the state assuming constant acceleration.
-        
-        Parameters:
-        - state (dict): Current state of the object.
-        - dt (float): Time delta.
-        
-        Returns:
-        - dict: Transitioned state.
-        """
-        new_position = state['position'] + state['velocity'] * dt + 0.5 * state['acceleration'] * dt**2
-        new_velocity = state['velocity'] + state['acceleration'] * dt
-        new_state = state.copy()
-        new_state['position'] = new_position
-        new_state['velocity'] = new_velocity
-        return new_state
-
-
 class Measurement:
     """Represents a measurement (candidate spot) in 3D space."""
     
@@ -260,6 +218,39 @@ class Track:
         pass
 
 
+###### Events accounted for in state space model
+
+class Event:
+    ""
+
+def persist_loglikelihood(state_model,measurement,track):
+    """
+    Computes loglikelihood of a measurement being associated with a track
+    
+    Parameters:
+    -----------
+    - state_model
+    - measurement
+    - track
+    """
+    
+    loglikelihood = 1
+    
+    return loglikelihood
+
+def death_loglikelihood(state_model,measurement,track):
+    """
+    Computes loglikelihood of a track dying
+    
+    Parameters:
+    -----------
+    - state_model
+    - track
+    """
+    loglikelihood = 1
+    
+    return loglikelihood
+    
 
 
 
