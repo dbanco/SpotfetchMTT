@@ -6,11 +6,18 @@ Description:
 Module containing state models for MTT
 
 Created on Tue Feb 18 16:37:10 2025
-@author: Daniel Banco
+@author: Bahar, Daniel
 """
 
 import numpy as np
 from abc import ABC, abstractmethod
+from mtt_framework.feature_extraction import (
+    compute_center_of_mass, 
+    find_bounding_box, 
+    compute_intensity, 
+    compute_velocity, 
+    compute_acc
+)
 
 class StateModel(ABC):
     """
@@ -101,6 +108,8 @@ class BasicModel(StateModel):
         measurements:
             List of measurement objects containing candidate spots.
         """
+        measurement= Measurement(data_masked)
+        return measurement
         
     def get_measurements(self, blobs, data):
         """
@@ -125,7 +134,7 @@ class BasicModel(StateModel):
         for blob_label in unique_labels:
             mask = (blobs == blob_label)  # Extract binary mask for the current blob
             x_masked = data * mask
-            measurement = compute_featuers(x_masked)
+            measurement = self.compute_features(x_masked)
             measurements.append(measurement)
 
         return measurements    
@@ -141,9 +150,11 @@ class BasicModel(StateModel):
         Returns:
         - dict: Updated state.
         """
-        # Simple example: Update state with measurement directly
-        self.state['position'] = measurement['position']
-        self.state['velocity'] = measurement['velocity']
+        # Update state with measurement directly
+        self.state['position'] = measurement.com
+        self.state['velocity'] = measurement.com_velocity
+        self.state['acceleration'] = measurement.com_acceleration
+        
         return self.state
     
     def transition(self, state, dt):
@@ -157,10 +168,52 @@ class BasicModel(StateModel):
         Returns:
         - dict: Transitioned state.
         """
-        # Transition position using velocity
+        # Transition position using velocity, assume consisten for now
+        state['velocity']= np.ones(3)
         new_position = state['position'] + state['velocity'] * dt
         new_state = state.copy()
         new_state['position'] = new_position
+        return new_state
+
+
+# Subclass 2: Example of a constant acceleration model
+class ConstantAccelerationStateModel(StateModel):
+    """
+    A state model that assumes constant acceleration between measurements.
+    """
+    
+    def update_state(self, measurement):
+        """
+        Update the state based on a new measurement.
+        
+        Parameters:
+        - measurement (dict): The new measurement to update the state.
+        
+        Returns:
+        - dict: Updated state.
+        """
+        # Update state with measurement directly
+        self.state['position'] = measurement.com
+        self.state['velocity'] = measurement.com_velocity
+        self.state['acceleration'] = measurement.com_acceleration
+        return self.state
+    
+    def transition(self, state, dt):
+        """
+        Transition the state assuming constant acceleration.
+        
+        Parameters:
+        - state (dict): Current state of the object.
+        - dt (float): Time delta.
+        
+        Returns:
+        - dict: Transitioned state.
+        """
+        new_position = state['position'] + state['velocity'] * dt + 0.5 * state['acceleration'] * dt**2
+        new_velocity = state['velocity'] + state['acceleration'] * dt
+        new_state = state.copy()
+        new_state['position'] = new_position
+        new_state['velocity'] = new_velocity
         return new_state
 
 class Measurement:
@@ -181,7 +234,10 @@ class Measurement:
         """
         self.com = compute_center_of_mass(x)
         self.bound_box = find_bounding_box(x)
-        self.intensity = np.sum(x)
+        self.intensity = compute_intensity(x)
+        #fix this later to calculate the velocity and acceleration correctly
+        self.com_velocity = compute_velocity (x,x)
+        self.com_acceleration = compute_acc(x,x)
         
         pass
 
@@ -205,7 +261,13 @@ class Track:
         
         """
 
-        pass
+        self.com = measurement.com
+        self.bound_box = measurement.bound_box
+        self.intensity = measurement.intensity
+        self.com_velocity = measurement.com_velocity
+        self.com_acceleration = measurement.com_acceleration
+        #placeholder for degree of overlap
+        self.overlap = 0    
 
     def update(self, measurement):
         """
@@ -215,7 +277,13 @@ class Track:
         - measurment: A measurement object
         """
         
-        pass
+        self.com = measurement.com
+        self.bound_box = measurement.bound_box
+        self.intensity = measurement.intensity
+        self.com_velocity = measurement.com_velocity
+        self.com_acceleration = measurement.com_acceleration
+        #placeholder for degree of overlap
+        self.overlap = 0
 
 
 ###### Events accounted for in state space model
