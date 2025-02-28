@@ -108,7 +108,7 @@ class BasicModel(StateModel):
         measurements:
             List of measurement objects containing candidate spots.
         """
-        measurement= Measurement(data_masked)
+        measurement = Measurement(data_masked)
         return measurement
         
     def get_measurements(self, blobs, data):
@@ -152,8 +152,8 @@ class BasicModel(StateModel):
         """
         # Update state with measurement directly
         self.state['position'] = measurement.com
-        self.state['velocity'] = measurement.com_velocity
-        self.state['acceleration'] = measurement.com_acceleration
+        # self.state['velocity'] = measurement.com_velocity
+        # self.state['acceleration'] = measurement.com_acceleration
         
         return self.state
     

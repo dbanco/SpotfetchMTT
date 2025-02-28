@@ -79,7 +79,7 @@ def compute_center_of_mass(x, labels=None, index=None):
     center_of_mass : tuple, or list of tuples
         Coordinates of centers-of-mass.
     """
-    return center_of_mass(x, labels=None, index=None)
+    return np.array(center_of_mass(x, labels=None, index=None))
 
 def find_bounding_box(mask):
   """
@@ -105,7 +105,7 @@ def find_bounding_box(mask):
   eta_min, eta_max = np.where(cols)[0][[0, -1]]
   ome_min, ome_max = np.where(tubs)[0][[0, -1]]
   
-  return tth_min, tth_max, eta_min, eta_max, ome_min, ome_max
+  return np.array([tth_min, tth_max, eta_min, eta_max, ome_min, ome_max])
 
 
 def compute_intensity(x):
