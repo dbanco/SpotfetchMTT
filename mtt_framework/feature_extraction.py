@@ -155,16 +155,16 @@ def compute_velocity(prev_com, curr_com, dt=1):
     return velocity
 
 
-def compute_acc(prev_com, curr_com, dt=1):
+def compute_acc(prev_velocity, curr_velocity, dt=1):
     """
     compute the acceleration of the com for a blob across two consecutive time step
 
     Parameters
     ----------
-    prev_com : tuple or array
-        The Center of mass at the previous time step
-    curr_com : tuple or array
-        The positio of the center of mass at the current timestep
+    prev_velocity : tuple or array
+        The velocity at the previous time step.
+    curr_velocity : tuple or array
+        The velocity at the current time step.
     dt : float, optional
         The default is 1.
 
@@ -175,26 +175,9 @@ def compute_acc(prev_com, curr_com, dt=1):
         omega dimension.
 
     """
-    return
+    acceleration= (np.array(curr_velocity) - np.array(prev_velocity))/dt
     
+    return acceleration
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+  
     
