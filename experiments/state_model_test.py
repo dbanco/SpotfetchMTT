@@ -14,16 +14,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from data.synthetic_spot_data import generate_synthetic_data
 from mtt_framework.state_model import BasicModel
+from mtt_framework.state_model import KalmanModel
 from mtt_framework.detection import ThresholdingDetector
 from mtt_framework.detection import HDoGDetector
 
-# Select detector "Thresholding" or "HDoG
-detector_choice = "Thresholding"
-if detector_choice == "HDoG":
-    spot_detector = HDoGDetector()
-elif detector_choice == "Thresholding":
-    spot_detector = ThresholdingDetector(threshold=0.1)
-    
 
 # Generate synthetic data with overlapping pair of spots
 data, state_vector = generate_synthetic_data('single', timesteps=20)
@@ -35,8 +29,19 @@ initial_state = {
     'acceleration': np.zeros(3)  # Assuming zero acceleration for now
 }
 
-# Instantiate the state model
-state_model = BasicModel(initial_state, feature_extractor=None)
+# Select detector "Thresholding" or "HDoG
+detector_choice = "Thresholding"
+if detector_choice == "HDoG":
+    spot_detector = HDoGDetector()
+elif detector_choice == "Thresholding":
+    spot_detector = ThresholdingDetector(threshold=0.1)
+    
+state_model_choice= 'KalmanFilter'
+if state_model_choice == 'Basic':
+    state_model = BasicModel(initial_state, feature_extractor=None)
+elif state_model_choice == 'KalmanFilter':
+    state_model= KalmanModel(initial_state, feature_extractor=None, process_noise=1e-5, measurement_noise=1e-5, dt=1, )
+    
 
 # Store predicted positions and actual positions for plotting (only for Spot 1)
 predicted_positions = []
@@ -57,7 +62,7 @@ for t in range(0, len(data)):
 
     # Update the state model with the measurements
     for measurement in measurements:
-        state_model.update_state(measurement)
+        state_model.update_state(measurement, dt=1)
 
 # Convert predicted positions and actual positions to numpy arrays for easier handling
 predicted_positions = np.array(predicted_positions) 
