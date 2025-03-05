@@ -50,12 +50,19 @@ class BasicFeatureExtractor(FeatureExtractor):
         Returns:
         - dict: Extracted feature values.
         """
+        bbox_features_dict = bbox_features(detection.mask) 
+        # Extract bbox center and size
+        bbox_center = bbox_features_dict['center'] if bbox_features_dict else None
+        bbox_size = bbox_features_dict['size'] if bbox_features_dict else None
+        
         return {
-            "com": detection.com,   # Center of mass
-            "intensity": detection.intensity,  # Total intensity
+            "Spot ID": detection.blob_label,
+            "com": compute_center_of_mass(detection.x_masked),   # Center of mass
+            'bbox': find_bounding_box(detection.mask),
+            "bbox_size": bbox_size,
+            "bbox_center": bbox_center,
+            "intensity": compute_intensity(detection.x_masked)# Total intensity
         }
-
-
 
 def compute_center_of_mass(x, labels=None, index=None):
     """
@@ -106,3 +113,157 @@ def find_bounding_box(mask):
   ome_min, ome_max = np.where(tubs)[0][[0, -1]]
   
   return tth_min, tth_max, eta_min, eta_max, ome_min, ome_max
+
+def bbox_features(mask):
+    """
+    Computes features (center and size) from the bounding box of a detected spot.
+
+    Parameters:
+    -----------
+    mask: A 3D numpy array representing the binary mask or masked data.
+
+    Returns:
+    --------
+    A dictionary with the following features:
+    - 'center': The center of the bounding box in each dimension (tta, eta, ome).
+    - 'size': The size (extent) of the bounding box in each dimension (tta, eta, ome).
+    """
+    
+    # Find the bounding box
+    bbox = find_bounding_box(mask)
+    if bbox is None:
+        return {'center': None, 'size': None}
+    
+    tth_min, tth_max, eta_min, eta_max, ome_min, ome_max = bbox
+
+    # Calculate the center of the bounding box in each dimension (tta, eta, ome)
+    center_tth = (tth_min + tth_max) / 2
+    center_eta = (eta_min + eta_max) / 2
+    center_ome = (ome_min + ome_max) / 2
+    center = [center_tth, center_eta, center_ome]
+
+    # Calculate the size of the bounding box in each dimension
+    size_tth = tth_max - tth_min + 1
+    size_eta = eta_max - eta_min + 1
+    size_omega = ome_max - ome_min + 1
+    size = [size_tth, size_eta, size_omega]
+
+    # Return the features as a dictionary
+    return {
+        'center': center,
+        'size': size
+    }
+
+def compute_intensity(x):
+    """
+    Calculate total intensity of the spot
+
+    Parameters
+    ----------
+    x input : ndarray
+        Data from which to calculate total intensity. 
+
+    Returns
+    -------
+    intensity : float
+    The total intensity computed as the sum of all values in x.
+    """
+    
+    intensity = np.sum(x)
+    
+    return intensity
+
+def compute_velocity(prev_com, curr_com, dt=1):
+    """
+    compute the velocity og the com for a blob across two consecutive time step
+
+    Parameters
+    ----------
+    prev_com : tuple or array
+        The Center of mass at the previous time step
+    curr_com : tuple or array
+        The positio of the center of mass at the current timestep
+    dt : float, optional
+        The default is 1.
+
+    Returns
+    -------
+    velocities : tuple 
+        The velocity between two time step in each tth, eta, and 
+        omega dimension.
+
+    """
+    #change in position
+    if prev_com is None or curr_com is None:
+        return np.zeros(3)
+    com_change= np.array(curr_com) - np.array(prev_com)
+    velocity= com_change / dt
+    
+    
+    return velocity
+
+
+def compute_acc(prev_velocity, curr_velocity, dt=1):
+    """
+    compute the acceleration of the com for a blob across two consecutive time step
+
+    Parameters
+    ----------
+    prev_velocity : tuple or array
+        The velocity at the previous time step.
+    curr_velocity : tuple or array
+        The velocity at the current time step.
+    dt : float, optional
+        The default is 1.
+
+    Returns
+    -------
+    acceleration : tuple 
+        The acceleration between two time step in each tth, eta, and 
+        omega dimension.
+
+    """
+    if curr_velocity is None or prev_velocity is None:
+        return np.zeros(3)
+    
+    acceleration= (np.array(curr_velocity) - np.array(prev_velocity))/dt
+    
+    return acceleration
+
+#detect overlap by checking if two bounding boxes intersect
+def check_overlap(bbox1, bbox2):
+    return not (
+        bbox1[1] < bbox2[0] or bbox2[1] < bbox1[0] or  # tta range
+        bbox1[3] < bbox2[2] or bbox2[3] < bbox1[2] or  # eta range
+        bbox1[5] < bbox2[4] or bbox2[5] < bbox1[4]    # ome range
+    )
+
+
+#is an integer that indicates the index of the overlapping spot
+def overlap_index(bbox, all_bboxes):
+    """
+    Determines the index of the first overlapping spot, or -1 if no overlap is found.
+
+    Parameters
+    ----------
+    bbox : tuple
+        The bounding box of the current spot (tth_min, tth_max, eta_min, eta_max, ome_min, ome_max).
+    all_bboxes : list of tuples
+        List of bounding boxes for all previously detected spots.
+
+    Returns
+    -------
+    int
+        The index of the overlapping spot, or -1 if no overlap is found.
+    """
+    for idx, other_bbox in enumerate(all_bboxes):
+        if check_overlap(bbox, other_bbox):
+            # Return index of the first overlapping spot
+            return idx  
+
+    # No overlap found
+    return -1  
+    
+    
+  
+    
