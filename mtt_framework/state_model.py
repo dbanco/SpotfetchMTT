@@ -106,14 +106,6 @@ class BasicModel(StateModel):
         # initialize previous state
         self.prev_state = None
         
-        
-    #def compute_features(self, data_masked):
-        """
-        Call the parent "compute_features" method
-        """
-        
-     #   return super().compute_features(data_masked)
-        
     def get_measurements(self, blobs, data):
         """
         Call the parent "get_measurements" method
@@ -370,7 +362,6 @@ class ConstantAccelerationStateModel(StateModel):
         new_state['velocity'] = new_velocity
         return new_state
 
-
 class Measurement:
     """Represents a measurement (candidate spot) in 3D space."""
     
@@ -447,6 +438,39 @@ class Track:
         self.overlap = 0
 
 
+###### Events accounted for in state space model
+
+class Event:
+    ""
+
+def persist_loglikelihood(state_model,measurement,track):
+    """
+    Computes loglikelihood of a measurement being associated with a track
+    
+    Parameters:
+    -----------
+    - state_model
+    - measurement
+    - track
+    """
+    
+    loglikelihood = 1
+    
+    return loglikelihood
+
+def death_loglikelihood(state_model,measurement,track):
+    """
+    Computes loglikelihood of a track dying
+    
+    Parameters:
+    -----------
+    - state_model
+    - track
+    """
+    loglikelihood = 1
+    
+    return loglikelihood
+    
 
 
 
