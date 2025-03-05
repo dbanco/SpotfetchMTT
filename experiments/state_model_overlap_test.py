@@ -17,6 +17,7 @@ from mtt_framework.state_model import KalmanModel
 from mtt_framework.state_model import BasicModel
 from mtt_framework.detection import ThresholdingDetector
 from mtt_framework.detection import HDoGDetector
+from mtt_framework.feature_extraction import BasicFeatureExtractor
 
 # Generate synthetic data for overlapping spots
 data, state_vector = generate_synthetic_data('overlapping pair', timesteps=20)
@@ -36,11 +37,13 @@ if detector_choice == "HDoG":
 elif detector_choice == "Thresholding":
     spot_detector = ThresholdingDetector(threshold=0.1)
     
+
+feature_extractor= BasicFeatureExtractor()
 state_model_choice= 'Basic'
 if state_model_choice == 'Basic':
-    state_model = BasicModel(initial_state, feature_extractor=None)
+    state_model = BasicModel(initial_state, feature_extractor=feature_extractor)
 elif state_model_choice == 'KalmanFilter':
-    state_model= KalmanModel(initial_state, process_noise=1e-5, measurement_noise=1e-5, dt=1)
+    state_model= KalmanModel(initial_state, feature_extractor=feature_extractor, process_noise=1e-5, measurement_noise=1e-5, dt=1)
 
 
 # Store predicted and actual positions
@@ -62,7 +65,7 @@ for t in range(len(data)):
     # Select the closest measurement to the predicted position
     if measurements:
         predicted_pos = new_state['position']
-        distances = [np.linalg.norm(predicted_pos - m.com) for m in measurements]
+        distances = [np.linalg.norm(predicted_pos - m['com']) for m in measurements]
         best_match = np.argmin(distances)  # Index of best measurement
 
         # Update the state using the best-matched measurement
