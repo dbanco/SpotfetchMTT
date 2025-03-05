@@ -11,13 +11,9 @@ Created on Tue Feb 18 16:37:10 2025
 
 import numpy as np
 from abc import ABC, abstractmethod
-from mtt_framework.feature_extraction import (
-    compute_center_of_mass, 
-    find_bounding_box, 
-    compute_intensity, 
-    compute_velocity, 
-    compute_acc
-)
+from mtt_framework.detection_spot import Detection
+
+        
 
 class StateModel(ABC):
     """
@@ -35,8 +31,8 @@ class StateModel(ABC):
         self.state = initial_state
         self.feature_extractor = feature_extractor
         
-    @abstractmethod
-    def compute_features(self, data_masked):
+    #@abstractmethod
+    #def compute_features(self, data_masked):
         """
         Update the state based on a new measurement.
 
@@ -46,7 +42,7 @@ class StateModel(ABC):
         Returns:
         - measurement (dict): a single measurement
         """
-        return Measurement(data_masked)
+    #    return Measurement(data_masked)
         
     @abstractmethod
     def get_measurements(self, blobs, data):
@@ -66,10 +62,12 @@ class StateModel(ABC):
         for blob_label in unique_labels:
             mask = (blobs == blob_label)
             x_masked = data * mask
-            measurement = self.compute_features(x_masked)
+            # Create a Detection object
+            detection = Detection(blob_label, mask, x_masked)
+            measurement = self.feature_extractor.extract_features(detection)
             measurements.append(measurement)
         return measurements
-        
+
     @abstractmethod
     def update_state(self, measurement):
         """
@@ -109,12 +107,12 @@ class BasicModel(StateModel):
         self.prev_state = None
         
         
-    def compute_features(self, data_masked):
+    #def compute_features(self, data_masked):
         """
         Call the parent "compute_features" method
         """
         
-        return super().compute_features(data_masked)
+     #   return super().compute_features(data_masked)
         
     def get_measurements(self, blobs, data):
         """
@@ -137,7 +135,7 @@ class BasicModel(StateModel):
         
         if self.prev_state is not None:
             # convert to numpy
-            current_position = np.array(measurement.com)  # Convert to numpy array
+            current_position = np.array(measurement["com"])  # Convert to numpy array
             prev_position = np.array(self.prev_state['position'])  # Convert to numpy array
 
             # Calculate velocity using the difference between current and previous CoM Position
@@ -148,12 +146,12 @@ class BasicModel(StateModel):
             self.state['velocity'] = np.zeros(3)
             
         # Update state with measurement directly
-        self.state['position'] = measurement.com
+        self.state['position'] = measurement["com"]
         self.state['velocity'] = self.state['velocity']
-        self.state['acceleration'] = measurement.com_acceleration
+        self.state['acceleration'] = np.zeros(3)
         
         self.prev_state = {
-            'position': measurement.com,
+            'position': measurement["com"],
             'velocity': self.state['velocity'],
             'dt': dt
         }
@@ -208,23 +206,26 @@ class KalmanModel(StateModel):
         ])
         
         # Measurement matrix (assumes we measure both position and velocity)
-        self.H = np.eye(6)  # Direct measurement of state
+        self.H = np.array([
+            [1, 0, 0, 0, 0, 0],  # Mapping position components of state to measurement
+            [0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0]
+        ])
         
         # Process noise covariance (Q), assumed constant
         self.Q = np.eye(6) * process_noise
         
         # Measurement noise covariance (R)
-        self.R = np.eye(6) * measurement_noise
+        self.R = np.eye(3) * measurement_noise
         
         # Time step (dt)
         self.dt = dt
         
-    def compute_features(self, data_masked):
+    #def compute_features(self, data_masked):
         """
         Call the parent "compute_features" method
         """
-        
-        return super().compute_features(data_masked)
+     #   return super().compute_features(data_masked)
         
     def get_measurements(self, blobs, data):
         """
@@ -243,7 +244,7 @@ class KalmanModel(StateModel):
         - dict: Updated state (position, velocity).
         """
         # Measurement vector
-        z = np.hstack((measurement.com, measurement.com_velocity))
+        z = np.hstack((measurement["com"]))
 
         # Innovation (residual)
         y = z - np.dot(self.H, self.state)
@@ -259,8 +260,7 @@ class KalmanModel(StateModel):
 
         # Covariance update: P_k|k = (I - K * H) * P_k|k-1
         I = np.eye(self.P.shape[0])  # Identity matrix
-        self.P = np.dot(np.dot(I - np.dot(K, self.H), self.P), 
-        	(I - np.dot(K, self.H)).T) + np.dot(np.dot(K, self.R), K.T)
+        self.P = np.dot(I - np.dot(K, self.H), self.P)
 
 
         return {'position': self.state[:3], 'velocity': self.state[3:], 'dt':dt}  # Return position and velocity
@@ -283,19 +283,52 @@ class KalmanModel(StateModel):
         return {'position': self.state[:3], 'velocity': self.state[3:]}
     
     
+    def association_likelihood(self, z_m, track_state, P_pred):
+        
+        # Predict the measurement for the track
+        z_pred = np.dot(self.H, track_state)
+        
+        # Compute the innovation (difference between predicted and actual measurement)
+        innovation = z_m - z_pred
+        
+        # Compute the Mahalanobis distance (using P_pred for covariance)
+        S = np.dot(np.dot(self.H, P_pred), self.H.T) + self.R  # Innovation covariance
+        inv_S = np.linalg.inv(S)
+        likelihood = np.exp(-0.5 * np.dot(innovation.T, np.dot(inv_S, innovation)))
+        
+        return likelihood
     
+    
+    def hypothesis_generation(self, measurements, tracks, threshold, dt):
+        hypotheses = []
+        for track in tracks:
+            for measurement in measurements:
+                # Compute predicted covariance and state from the previous step
+                P_pred, track_state = self.transition(track, dt)  # Kalman prediction step
+            
+                # Compute the likelihood of associating the measurement to this track
+                likelihood = self.association_likelihood(measurement, track_state, P_pred)
+            
+                # If the likelihood is above a threshold, form a hypothesis
+                if likelihood > threshold:
+                    hypothesis = {'track': track, 'measurement': measurement, 'likelihood': likelihood}
+                    hypotheses.append(hypothesis)
+    
+        return hypotheses
+    
+     
 # Subclass 3: Example of a constant acceleration model
 class ConstantAccelerationStateModel(StateModel):
     """
     A state model that assumes constant acceleration between measurements.
     """
     
-    def compute_features(self, data_masked):
-        """
-        Call the parent "compute_features" method
-        """
+    #def compute_features(self, data_masked):
+     #   """
+     #   Call the parent "compute_features" method
+     #   """
         
-        return super().compute_features(self, data_masked)
+     #   return super().compute_features(data_masked)
         
     def get_measurements(self, blobs, data):
         """
@@ -314,8 +347,8 @@ class ConstantAccelerationStateModel(StateModel):
         - dict: Updated state.
         """
         # Update state with measurement directly
-        self.state['position'] = measurement.com
-        self.state['velocity'] = measurement.com_velocity
+        self.state['position'] = measurement["com"]
+        self.state['velocity'] = measurement["velocity"]
         self.state['acceleration'] = measurement.com_acceleration
         return self.state
     
@@ -354,6 +387,7 @@ class Measurement:
         - bound_box (array): boudning box (tth1,tth2,eta1,eta2,ome1,ome2) of blob 
         - intensity (float): Total intensity of the detected spot.
         """
+        """
         self.com = compute_center_of_mass(x)
         self.bound_box = find_bounding_box(x)
         self.intensity = compute_intensity(x)
@@ -365,7 +399,7 @@ class Measurement:
             self.com_velocity = np.zeros_like(self.com)
             self.com_acceleration = np.zeros_like(self.com)
             
-        
+        """
         pass
 
 class Track:
