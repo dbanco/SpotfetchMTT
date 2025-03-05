@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 
-mht_system
+mht_tracker
 
 
 Created on Tue Feb 18 16:46:03 2025
@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from mtt_framework.state_model import BasicModel
 from itertools import chain, combinations
 import copy
+import matplotlib.colors as mcolors
 
 def euclidean_cost(position1, position2, association_cost=0):
     """
@@ -32,7 +33,7 @@ def euclidean_cost(position1, position2, association_cost=0):
     return distance + association_cost
 
 class HypothesisNode:
-    def __init__(self, hypoth_id, track_id, track, parents=None, event_type="persist", cost=0):
+    def __init__(self, hypoth_id, track_id, measurement_id, track, scan, parents=None, event_type="persist", cost=0):
         """
         Represents a node in the hypothesis tree.
 
@@ -46,9 +47,11 @@ class HypothesisNode:
         """
         self.hypoth_id = hypoth_id  # Unique for each hypothesis
         self.track_id = set(track_id) if isinstance(track_id, (list, tuple, set)) else {track_id}
+        self.measurement_id = measurement_id
         self.track = track  # StateModel object
         self.parents = parents if parents else []  # Supports multiple parents
         self.children = []
+        self.scan = scan
         self.event_type = event_type  # Track event type
         self.cost = cost  # Log-likelihood
         self.best = False
@@ -56,6 +59,7 @@ class HypothesisNode:
     def add_child(self, child_node):
         """Adds a child node to this hypothesis."""
         self.children.append(child_node)
+    
 
 class HypothesisTree:
     def __init__(self):
@@ -63,8 +67,10 @@ class HypothesisTree:
         self.nodes = {}
         self.next_hypoth_id = -1  # Auto-increment hypothesis ID
         self.next_track_id = -1
+        self.fig, self.axes = None, None
+        self.track_colors = {}
 
-    def add_node(self, track, parent_ids=None, event_type="persist", cost=0):
+    def add_node(self, track, scan, measurement_id, parent_ids=None, event_type="persist", cost=0):
         """
         Adds a new node to the hypothesis tree.
         - track_id is always a set.
@@ -78,7 +84,7 @@ class HypothesisTree:
             # Root node case
             if self.root is not None:
                 raise ValueError("Root node already exists")
-            new_node = HypothesisNode(-1, -1, np.zeros(3), "root", cost=cost)
+            new_node = HypothesisNode(-1, -1, -1, np.zeros(3), "root", cost=cost)
             self.next_track_id += 1
             self.root = new_node
         else:
@@ -93,9 +99,14 @@ class HypothesisTree:
             else:
                 # Merge track IDs from all parent nodes
                 track_id = set.union(*[parent.track_id for parent in parent_nodes])
-
+            
+            # Get total cost by adding cost of parents
+            parents_cost = 0
+            for node in parent_nodes:
+                parents_cost += node.cost
+            
             # Create new hypothesis node
-            new_node = HypothesisNode(hypoth_id, track_id, track, parent_nodes, event_type, cost=cost)
+            new_node = HypothesisNode(hypoth_id, track_id, measurement_id, track, scan, parent_nodes, event_type, cost=cost + parents_cost)
 
             # Attach new node to each parent
             for parent in parent_nodes:
@@ -105,36 +116,134 @@ class HypothesisTree:
         self.nodes[hypoth_id] = new_node
         return new_node  # Return new node for tracking
 
-    def get_node(self, hypoth_id):
-        return self.nodes.get(hypoth_id)
-
-    def get_best_hypothesis(self):
+    def pruning(self, N):
+        """
+        Prunes the hypothesis tree by removing non-best nodes that are at least N scans away from the most recent best hypothesis.
+        """
+        # Step 1: Identify all "best" nodes at most N scans away from the latest best leaves
+        best_leaves = [node for node in self.leaf_nodes if node.best]
+        best_nodes = set(best_leaves)
         
+        # Traverse upward to find all best nodes within N scans, ensuring we don't go beyond the root
+        for _ in range(N):
+            new_best_nodes = set()
+            for node in best_nodes:
+                for parent in node.parents:
+                    if parent is self.root:
+                        break
+                    elif parent.best:
+                        new_best_nodes.add(parent)
+                if parent is self.root:
+                    break
+            if parent is self.root:
+                break
+            best_nodes = new_best_nodes
+        
+        # Step 2: Identify non-best children of these best nodes and mark them for removal
+        to_remove = set()
+        for node in best_nodes:
+            for child in node.children:
+                if not child.best:
+                    to_remove.add(child)
+        
+        # Step 3: Recursively remove non-best nodes and their descendants
+        def recursive_delete(node):
+            for child in list(node.children):  # Use list to avoid modifying set during iteration
+                recursive_delete(child)
+            if node.hypoth_id in self.nodes:
+                del self.nodes[node.hypoth_id]
+            for parent in node.parents:
+                parent.children.remove(node)  # Ensure parent references are updated
+        
+        for node in to_remove:
+            recursive_delete(node)
+        
+        # Cleanup: Remove deleted nodes from their parents' children lists
+        # for node in best_nodes:
+        #     node.children = [child for child in node.children if child in self.nodes]
+
+    def visualize_hypothesis_tree(self):
+        """
+        Visualizes the hypothesis tree using NetworkX and Matplotlib, showing event types.
+        """
         if self.root is None:
-            return None
+            print("The hypothesis tree is empty.")
+            return
 
-        best_node = None
-        min_cost = float('inf')
+        G = nx.DiGraph()
+        labels = {}
+        node_colors = {}
 
-        def traverse(node, current_cost):
-            nonlocal best_node, min_cost
-            current_cost += node.cost
-            if not node.children:  
-                if current_cost < min_cost:
-                    min_cost = current_cost
-                    best_node = node
+        def add_edges(node):
+            if node.event_type == "death":
+                node_colors[node.hypoth_id] = "purple"
+            elif node.best:
+                node_colors[node.hypoth_id] = "red"
             else:
-                for child in node.children:
-                    traverse(child, current_cost)
+                node_colors[node.hypoth_id] = "lightblue"
+            
+            for child in node.children:
+                G.add_edge(node.hypoth_id, child.hypoth_id)
+                labels[(node.hypoth_id, child.hypoth_id)] = child.event_type  # Label edges with events
+                add_edges(child)
 
-        traverse(self.root, 0)
+        node_colors[self.root.hypoth_id] = "lightblue"  # Root node color
+        add_edges(self.root)
+
+        try:
+            pos = hierarchy_layout(G)
+        except Exception as e:
+            print(f"Hierarchy Layout Error: {e}")
+            pos = nx.spring_layout(G)
+
+        plt.figure(figsize=(12, 8))
+        nx.draw(G, pos, with_labels=True, node_size=2000, node_color=[node_colors.get(n, "lightblue") for n in G.nodes],
+                edge_color="gray", font_size=10, font_weight="bold", arrowsize=12)
+
+        # Draw event type labels on edges
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=10, font_color="red")
+
+        plt.title("Hypothesis Tree (Events: Persist, Overlap, Split, Birth, Death)")
+        plt.show()
+    
+    def get_track_color(self, track_id):
+        """Assigns a unique color to each track_id."""
+        if track_id not in self.track_colors:
+            cmap = list(mcolors.TABLEAU_COLORS.values()) + list(mcolors.CSS4_COLORS.values())
+            self.track_colors[track_id] = cmap[len(self.track_colors) % len(cmap)]
+        return self.track_colors[track_id]
         
-        path = []
-        current = best_node
-        while current:
-            path.append(current)
-            current = current.parent
-        return path[::-1]
+    def plot_all_tracks(self, data, time_steps, omeRange):
+        """
+        Plots all scans and overlays all tracks detected over time.
+        """
+        fig, axes = plt.subplots(len(omeRange), len(time_steps), figsize=(20, 20))
+        if len(omeRange) == 1:
+            axes = [axes]
+        
+        for t_idx, time_step in enumerate(time_steps):
+            for i, ome in enumerate(omeRange):
+                slice_data = data[time_step, :, :, ome]
+                ax = axes[i][t_idx] if len(omeRange) > 1 else axes[t_idx]
+                ax.imshow(slice_data, origin='lower', cmap='viridis')
+        
+        for node in self.nodes.values():
+            if node.hypoth_id > -1 and node.best:
+                scan_idx = node.scan
+                for i, ome in enumerate(omeRange):
+                    if abs(int(node.track.state['position'][2]) - ome) < 2:
+                        ax = axes[i][scan_idx] if len(omeRange) > 1 else axes[scan_idx]
+                        pos = node.track.state['position']
+                        colors = [self.get_track_color(tid) for tid in node.track_id]
+                        
+                        for j, color in enumerate(colors):
+                            offset = (j - len(colors) / 2) * 2  # Prevent overlap
+                            rect = plt.Rectangle((pos[0] - 5 + offset, pos[1] - 5 + offset), 10, 10, edgecolor=color, facecolor='none', linewidth=2)
+                            ax.add_patch(rect)
+        
+        plt.subplots_adjust(wspace=0, hspace=0)
+        plt.show()
+
     
 class MHTTracker:
     """Multiple Hypothesis Tracker for 3D spot tracking."""
@@ -154,6 +263,7 @@ class MHTTracker:
         }
         self.gating_threshold = gating_threshold
         self.initialize_hypothesis_tree(measurements)
+        self.current_scan = 0
         pass
     
     def initialize_hypothesis_tree(self,measurements):
@@ -169,18 +279,17 @@ class MHTTracker:
         self.tree = HypothesisTree()
         
         # Create a dummy root node (track_id=-1, no meaningful state)
-        self.tree.add_node(track=np.array([0, 0, 0]))  # Dummy root
+        self.tree.add_node(track=np.array([0, 0, 0]),scan=-1,measurement_id=-1)  # Dummy root
         
         # Add each measurement as a child of the root
-        for measurement in measurements:
-            print(measurement.com)
+        for i,measurement in enumerate(measurements):
             state_model = BasicModel(self.initial_state, feature_extractor=None)
             state_model.update_state(measurement)
             
-            self.tree.add_node(track=copy.deepcopy(state_model), event_type="birth", parent_ids=[-1])
+            self.tree.add_node(track=copy.deepcopy(state_model), scan=0, measurement_id=i, event_type="birth", parent_ids=[-1])
             
         # Update leaf nodes
-        self.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
+        self.tree.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
 
     def gating(self, measurements, cov_matrix=None):
         """
@@ -192,9 +301,9 @@ class MHTTracker:
         Returns:
         - m2ta_matrix (np.array)
         """
-        
-        self.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
-        num_leaf_nodes = len(self.leaf_nodes)
+        self.measurements = measurements
+        self.tree.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
+        num_leaf_nodes = len(self.tree.leaf_nodes)
         self.m2ta_matrix = np.zeros((len(measurements),num_leaf_nodes))
         self.m2ta_to_hypoth_id = np.zeros(num_leaf_nodes)
             
@@ -202,7 +311,7 @@ class MHTTracker:
         if cov_matrix is None:
             cov_matrix = np.eye(3)  # Assume identity if not provided
         
-        for k, node in enumerate(self.leaf_nodes):
+        for k, node in enumerate(self.tree.leaf_nodes):
             self.m2ta_to_hypoth_id[k] = node.hypoth_id
             for m, measurement in enumerate(measurements):
                 diff = measurement.com - node.track.state['position']
@@ -217,34 +326,34 @@ class MHTTracker:
     def remove_unassociated_nodes(self):
         """
         Removes hypothesis nodes that do not have any association and
-        recursively removes parent nodes if they no longer have children.
+        assigns a "death" hypothesis to parent nodes that lose all children.
         """
         # Identify columns with no associations (i.e., all zeros)
         unassociated_cols = np.where(~self.m2ta_matrix.any(axis=0))[0]
         
         # Retrieve the corresponding hypothesis nodes
-        to_remove = [self.nodes[self.m2ta_to_hypoth_id[k]] for k in unassociated_cols]
+        to_remove = [self.tree.nodes[self.m2ta_to_hypoth_id[k]] for k in unassociated_cols]
 
-        # Remove nodes
+        # Remove nodes and handle death hypotheses
         for node in to_remove:
-            parent = node.parent
+            parents = node.parents.copy()  # Copy to avoid modification during iteration
             del self.tree.nodes[node.hypoth_id]
-            if parent:
+            
+            for parent in parents:
                 parent.children.remove(node)
-                # Remove parents that no longer have children
-                while parent and not parent.children:
-                    grandparent = parent.parent
-                    del self.tree.nodes[parent.hypoth_id]
-                    if grandparent:
-                        grandparent.children.remove(parent)
-                    parent = grandparent
+                
+                # Assign a death hypothesis if parent loses all children (instead of removal)
+                if not parent.children and parent is not self.root:
+                    state_model = BasicModel(parent.track, feature_extractor=None)
+                    self.add_node(track=state_model, scan=self.current_scan, parent_ids=[parent.hypoth_id], event_type="death", cost=0)
+
     
     def get_associated_leaf_nodes(self, measurement_index):
         """
         Finds leaf nodes associated with a measurement using the m2ta matrix.
         """
-        associated_tracks = np.where(self.m2ta_matrix[measurement_index] > 0)[0]
-        return [node for node in self.leaf_nodes if node.track_id & set(associated_tracks)]
+        associated_hypoths = np.where(self.m2ta_matrix[measurement_index] > 0)[0]
+        return [self.tree.leaf_nodes[i] for i in associated_hypoths]
     
 
     def generate_persist_hypotheses(self, associated_leaf_nodes, measurement, cost_function):
@@ -267,49 +376,54 @@ class MHTTracker:
                 hypotheses.append((parent_ids, cost))
         return hypotheses
     
-    def generate_split_hypotheses(self, associated_leaf_nodes, measurement, cost_function):
-        """
-        Generates split hypotheses where a previously merged track now associates with multiple measurements.
-        """
-        hypotheses = []
-        for node in associated_leaf_nodes:
-            if len(node.track_id) > 1:
-                split_variants = self.generate_possible_splits(node.track_id)
-                for split_group in split_variants:
-                    predicted_coms = self.estimate_split_coms(node, split_group, measurement.com)
-                    split_cost = sum(cost_function(predicted_com, measurement.com) for predicted_com in predicted_coms)
-                    hypotheses.append(([node.hypoth_id], split_cost))
-        return hypotheses
+    # def generate_split_hypotheses(self, measurements, cost_function):
+    #     """
+    #     Identifies all possible split hypotheses given the current tree and measurements.
+    #     - A split hypothesis is considered when a node with multiple track_ids is associated with multiple measurements.
+    #     """
+    #     split_hypotheses = []
+    #     for node in self.tree.nodes.values():
+    #         if len(node.track_id) > 1:
+    #             associated_measurements = [m_idx for m_idx in range(len(measurements)) if any(self.m2ta_matrix[m_idx, tid] for tid in node.track_id)]
+    #             if len(associated_measurements) > 1:
+    #                 split_variants = self.generate_possible_splits(node.track_id)
+    #                 for split_group in split_variants:
+    #                     predicted_coms = self.estimate_split_coms(node, split_group, measurements)
+    #                     split_cost = sum(cost_function(predicted_com, measurements[m_idx].com) for predicted_com, m_idx in zip(predicted_coms, associated_measurements))
+    #                     split_hypotheses.append((split_group, [node.hypoth_id], split_cost))
+    #     return split_hypotheses
     
-    def update_hypothesis_tree(self, new_measurements, cost_function=euclidean_cost):
+    def update_hypothesis_tree(self, cost_function=euclidean_cost):
         """
         Updates the hypothesis tree by adding new hypotheses to existing leaf nodes only.
         """
         self.remove_unassociated_nodes()
+        # split_hypotheses = self.generate_split_hypotheses(self.measurements, cost_function)
         
-        for m_idx, measurement in enumerate(new_measurements):
+        for m_idx, measurement in enumerate(self.measurements):
             associated_leaf_nodes = self.get_associated_leaf_nodes(m_idx)
-            print(associated_leaf_nodes)
     
             persist_hypotheses = self.generate_persist_hypotheses(associated_leaf_nodes, measurement, cost_function)
             overlap_hypotheses = self.generate_overlap_hypotheses(associated_leaf_nodes, measurement, cost_function)
-            split_hypotheses = self.generate_split_hypotheses(associated_leaf_nodes, measurement, cost_function)
-            
+
             state_model = BasicModel(self.initial_state, feature_extractor=None)
             state_model.update_state(measurement)
             
+            # Create persist hypotheses
             for parent_id, cost in persist_hypotheses:
-                self.tree.add_node(track=copy.deepcopy(state_model), parent_ids=[parent_id], event_type="persist", cost=cost)
-    
+                self.tree.add_node(track=copy.deepcopy(state_model), scan = self.current_scan, measurement_id=m_idx, parent_ids=[parent_id], event_type="persist", cost=cost)
+            
+            # Create overlap hypotehses
             for parent_ids, cost in overlap_hypotheses:
-                self.tree.add_node(track=copy.deepcopy(state_model), parent_ids=parent_ids, event_type="overlap", cost=cost)
+                self.tree.add_node(track=copy.deepcopy(state_model), scan = self.current_scan, measurement_id=m_idx, parent_ids=parent_ids, event_type="overlap", cost=cost)
     
-            for parent_ids, cost in split_hypotheses:
-                self.tree.add_node(track=copy.deepcopy(state_model), parent_ids=parent_ids, event_type="split", cost=cost)
+            # for parent_ids, cost in split_hypotheses:
+            #     self.tree.add_node(track=copy.deepcopy(state_model), scan = self.current_scan, measurement_id=m_idx, parent_ids=parent_ids, event_type="split", cost=cost)
     
-            if not associated_leaf_nodes:
-                self.tree.add_node(track=copy.deepcopy(state_model), parent_ids=[-1], event_type="birth", cost=0)
+            # THE LOGIC RELATING TO BIRTHS AND DEATHS NEEDS TO BE FIXED               
     
+        self.tree.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
+            
     def evaluate_hypotheses(self):
         """
         Evaluates the hypotheses to determine the best global hypothesis.
@@ -322,39 +436,77 @@ class MHTTracker:
             node.best = False
         
         # Get the optimal set of hypotheses
-        best_hypotheses = self.setup_integer_program()
+        best_hypotheses, unassigned_measurements = self.setup_integer_program()
         
+        # Get max cost over best hypotheses to assign to newly birthed spots
+        
+        # Create births for unassigned measurements and make them part of best
+        for m_idx, measurement in enumerate(self.measurements):
+            if unassigned_measurements[m_idx]:
+                state_model = BasicModel(self.initial_state, feature_extractor=None)
+                state_model.update_state(measurement)
+                self.tree.add_node(track=copy.deepcopy(state_model), scan = self.current_scan, measurement_id=m_idx, parent_ids=[-1], event_type="birth", cost=0)
+                self.tree.nodes[self.tree.next_hypoth_id-1].best = True
+        
+                # Make sure no other hypotheses exists involving measurement of birthed node
+                for node in self.tree.leaf_nodes:
+                    if node.measurement_id == m_idx:
+                        if node.hypoth_id in self.tree.nodes:
+                            del self.tree.nodes[node.hypoth_id]
+                        for parent in node.parents:
+                            parent.children.remove(node)  # Ensure parent references are updated
+                
+                
         # Mark selected nodes and propagate to parents
-        for node in best_hypotheses:
-            while isinstance(node,HypothesisNode):
+        def propagate_best(node):
+            if isinstance(node, HypothesisNode) and not node.best:
                 node.best = True
-                node = next(iter(node.parents), None)  # Move up the tree
+                for parent in node.parents:
+                    propagate_best(parent)
+        
+        # Call recursively on all best hypotheses
+        for node in best_hypotheses:
+            propagate_best(node)
+            
+        self.tree.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
+        
+        
                 
     def setup_integer_program(self):
         """
         Sets up the integer programming problem to find the best global hypothesis.
         """
-        hypothesis_list = self.leaf_nodes
+        hypothesis_list = self.tree.leaf_nodes
         num_hypotheses = len(hypothesis_list)
         track_ids = set.union(*[node.track_id for node in hypothesis_list])
         num_tracks = len(track_ids)
+        num_measurements = self.m2ta_matrix.shape[0]
         
         # Cost vector
         c = np.array([node.cost for node in hypothesis_list])
         
-        # Constraint matrix A and vector b
-        A = np.zeros((num_tracks, num_hypotheses))
+        # Track constraint matrix
+        track_id_to_A = {track_id: index for index, track_id in enumerate(track_ids)}
+        A_t = np.zeros((num_tracks, num_hypotheses))
         for j, node in enumerate(hypothesis_list):
             for track_id in node.track_id:
-                A[track_id, j] = 1
-        b = np.ones(num_tracks)
+                A_t[track_id_to_A[track_id], j] = 1
+        b_t = np.ones(num_tracks)
+        
+        # Measurement constraint matrix
+        A_m = np.zeros((num_measurements, num_hypotheses))
+        for j, node in enumerate(hypothesis_list):
+                A_m[node.measurement_id, j] = 1
+        b_m = np.ones(num_measurements)
         
         # Solve integer linear program
-        result = scipy.optimize.linprog(c, A_eq=A, b_eq=b, bounds=(0, 1), method='highs')
+        result = scipy.optimize.linprog(c, A_eq=A_t, b_eq=b_t,
+                                           A_ub=A_m, b_ub=b_m,
+                                        bounds=(0, 1), method='highs')
         
         if result.success:
             selected_hypotheses = [hypothesis_list[i] for i in range(num_hypotheses) if result.x[i] > 0.5]
-            return selected_hypotheses
+            return selected_hypotheses, result['ineqlin']['residual']
         else:
             raise ValueError("No valid hypothesis selection found")
 
@@ -402,45 +554,6 @@ class MHTTracker:
         while all(len(parent.track_id) == len(node.track_id) for parent in node.parents):
             node = next(iter(node.parents))  # Move up to the first overlap event
         return node.track.state['position']
-
-    def associate_measurements(self, detections):
-        """
-        Solve the data association problem using the Hungarian algorithm.
-        
-        Parameters:
-        - detections (list of Detection): List of detected spots.
-        
-        Returns:
-        - list of tuples: Each tuple represents an assigned (track, detection) pair.
-        """
-        pass
-
-    def update_tracks(self, detections):
-        """
-        Update existing tracks with new detections and create new tracks.
-        
-        Parameters:
-        - detections (list of Detection): List of detected spots.
-        """
-        pass
-
-    def track_step(self, detections):
-        """
-        Perform one step of the MHT tracking cycle.
-        
-        Parameters:
-        - detections (list of Detection): List of detected spots at the current time step.
-        """
-        pass
-    
-    def process_measurements(self, measurements):
-        """
-        Takes ikn measurements, associates them with tracks, generates
-        hypothesis trees, identifies best global hypothesis, updates state
-        """
-
-
-
 
 def hierarchy_layout(G, root=None, level_gap=1.5, min_spacing=2.0):
     """
@@ -512,42 +625,6 @@ def hierarchy_layout(G, root=None, level_gap=1.5, min_spacing=2.0):
 
     return pos
 
-def visualize_hypothesis_tree(root):
-    """
-    Visualizes the hypothesis tree using NetworkX and Matplotlib, showing event types.
-    """
-    if root is None:
-        print("The hypothesis tree is empty.")
-        return
 
-    G = nx.DiGraph()
-    labels = {}
-    node_colors = {}
-
-    def add_edges(node):
-        for child in node.children:
-            G.add_edge(node.hypoth_id, child.hypoth_id)
-            labels[(node.hypoth_id, child.hypoth_id)] = child.event_type  # Label edges with events
-            node_colors[child.hypoth_id] = "red" if child.best else "lightblue"
-            add_edges(child)
-
-    node_colors[root.hypoth_id] = "lightblue"  # Root node color
-    add_edges(root)
-
-    try:
-        pos = hierarchy_layout(G)
-    except Exception as e:
-        print(f"Hierarchy Layout Error: {e}")
-        pos = nx.spring_layout(G)
-
-    plt.figure(figsize=(12, 8))
-    nx.draw(G, pos, with_labels=True, node_size=2000, node_color=[node_colors.get(n, "lightblue") for n in G.nodes],
-            edge_color="gray", font_size=10, font_weight="bold", arrowsize=12)
-
-    # Draw event type labels on edges
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=10, font_color="red")
-
-    plt.title("Hypothesis Tree (Events: Persist, Overlap, Split, Birth, Death)")
-    plt.show()
 
 
