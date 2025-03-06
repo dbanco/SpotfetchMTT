@@ -238,7 +238,7 @@ class HypothesisTree:
 class MHTTracker:
     """Multiple Hypothesis Tracker for 3D spot tracking."""
     
-    def __init__(self, measurements, track_model, gating_threshold=25.0):
+    def __init__(self, track_model, gating_threshold=25.0, plot_tree=False):
         """
         Initialize the tracker.
         
@@ -250,10 +250,31 @@ class MHTTracker:
         self.current_scan = 0
         self.gating_threshold = gating_threshold
         self.track_model = track_model
-        self.initialize_hypothesis_tree(measurements)
 
         pass
     
+    def process_measurements(self,measurements,scan):
+        # 0. Initialize tracker if it is scan 0
+        self.current_scan = scan
+        if self.current_scan == 0:
+            self.initialize_hypothesis_tree(measurements)
+            self.prediction()
+        else:
+            # 1. Gating
+            self.gating(measurements)
+            
+            # 2. Generate, evaluate, prune hypotehses
+            self.update_hypothesis_tree()
+            self.evaluate_hypotheses()
+            self.tree.pruning(3)
+            
+            # 3. Prediction
+            self.prediction()
+            
+            if self.plot_tree:
+                self.tree.visualize_hypothesis_tree()
+        
+        
     def initialize_track(self, measurement):
         track = copy.deepcopy(self.track_model)
         track.update_state(measurement,self.dt)

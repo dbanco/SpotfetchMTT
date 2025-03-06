@@ -48,45 +48,44 @@ measurements = track_model.get_measurements(blobs, data[0])
 time_steps_to_plot = [4,6,8,10,12,14,16]
 omeRange = np.arange(20)
 
-mht_tracker = MHTTracker(measurements=measurements,track_model=track_model)
-mht_tracker.prediction()
-mht_tracker.tree.visualize_hypothesis_tree()
-# mht_tracker.tree.initialize_plot(data[0], omeRange)
+mht_tracker = MHTTracker(track_model=track_model)
+
 
 # Store predicted positions and actual positions for plotting (only for Spot 1)
 predicted_positions = []
 actual_positions = state_vector[:, 0]  # True positions of the first spot (Spot 1)
 
 # Transition through the data
-for t in range(1, len(data)):
+for t in range(0, len(data)):
     # For each time step, compute the next state assuming constant velocity
-    mht_tracker.prediction()
+    
+    if t == 0:
+        mht_tracker.initialize_hypothesis_tree(measurements)
+        mht_tracker.prediction()
+    else:
+        # extract measurements from the data at the current timestep
+        blobs, num_blobs = spot_detector.detect(data[t])
+        print(f'num_blobs = {num_blobs}')
+        measurements = track_model.get_measurements(blobs, data[t])
+        
+        # Do gating and make m2ta matrix
+        mht_tracker.current_scan = t
+        mht_tracker.gating(measurements)
+        print(mht_tracker.m2ta_matrix)
+        
+        # Generate hypotheses and tree, show tree of option
+        mht_tracker.update_hypothesis_tree()
+        
+        # Evaluate hypotheses
+        mht_tracker.evaluate_hypotheses()
 
-    # extract measurements from the data at the current timestep
-    blobs, num_blobs = spot_detector.detect(data[t])
-    print(f'num_blobs = {num_blobs}')
-    measurements = track_model.get_measurements(blobs, data[t])
-    
-    # Do gating and make m2ta matrix
-    mht_tracker.current_scan = t
-    mht_tracker.gating(measurements)
-    print(mht_tracker.m2ta_matrix)
-    
-    # Generate hypotheses and tree, show tree of option
-    mht_tracker.update_hypothesis_tree()
-    
-    # Evaluate hypotheses
-
-    mht_tracker.evaluate_hypotheses()
-    
-    # Visualize tree
-    # mht_tracker.tree.visualize_hypothesis_tree()
-    
-    # Prune
-    mht_tracker.tree.pruning(3)
-    
-    # Visualize tree again
-    mht_tracker.tree.visualize_hypothesis_tree()
+        # Prune
+        mht_tracker.tree.pruning(3)
+        
+        # Visualize tree again
+        mht_tracker.tree.visualize_hypothesis_tree()
+        
+        mht_tracker.prediction()
     
 # Show data
 mht_tracker.tree.plot_all_tracks(data,np.arange(20),omeRange)

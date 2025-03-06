@@ -12,6 +12,12 @@ from scipy.ndimage import label
 from skimage.feature import hessian_matrix
 from abc import ABC, abstractmethod
 
+class Detection:
+    def __init__(self, blob_label, mask, x_masked):
+        self.blob_label = blob_label
+        self.mask = mask
+        self.x_masked = x_masked
+
 class DetectorBase(ABC):
     """
     Abstract base class for spot detection methods.
@@ -89,6 +95,7 @@ class ThresholdingDetector(DetectorBase):
         Returns:
         - Masked data where each blob is labeled with integer >= 1
         """
+        
         return thresholdingDetection(data,self.threshold)
 
 ####################### Functions ##############################
@@ -109,8 +116,8 @@ def thresholdingDetection(data,threshold):
         - num_blobs : int
             Number of blobs detected.
     """   
-    data[data < threshold] = 0
-    return label(data)
+    blobs, num_blobs = data[data < threshold] = 0
+    return blobs, num_blobs
 
 
 def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
