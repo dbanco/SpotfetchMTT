@@ -223,10 +223,6 @@ class HypothesisTree:
                     if abs(int(node.track.state['com'][2]) - ome) < 2:
                         ax = axes[i][scan_idx] if len(omeRange) > 1 else axes[scan_idx]
                         pos = node.track.state['com']  # Center of mass of the object
-                        
-                        # Get the corresponding mask from the data for this track
-                        # Assuming that the mask is stored in the 'data' array or can be derived
-                        # Replace this with the actual code to extract the mask for the track
                         mask = data[scan_idx, :, :, ome]  # Example mask extraction (adjust as needed)
                         
                         # Calculate the bounding box using the mask
