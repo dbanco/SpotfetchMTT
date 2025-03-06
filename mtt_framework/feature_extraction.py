@@ -86,7 +86,7 @@ def compute_center_of_mass(x, labels=None, index=None):
     center_of_mass : tuple, or list of tuples
         Coordinates of centers-of-mass.
     """
-    return center_of_mass(x, labels=None, index=None)
+    return np.array(center_of_mass(x, labels=None, index=None))
 
 def find_bounding_box(mask):
   """
@@ -112,7 +112,34 @@ def find_bounding_box(mask):
   eta_min, eta_max = np.where(cols)[0][[0, -1]]
   ome_min, ome_max = np.where(tubs)[0][[0, -1]]
   
-  return tth_min, tth_max, eta_min, eta_max, ome_min, ome_max
+  return np.array([tth_min, tth_max, eta_min, eta_max, ome_min, ome_max])
+
+def find_bounding_box_2D(mask):
+    """
+    Finds the bounding box coordinates of non-zero pixels in a binary mask.
+
+    Parameters:
+    -----------
+    mask: A 2D numpy array representing the binary mask or masked data.
+
+    Returns:
+    --------
+    A tuple (tth_min, tth_max, eta_min, eta_max) representing 
+    the bounding box coordinates or None if no non-zero pixels are found.
+    """
+    # Check for non-zero pixels along rows and columns
+    rows = np.any(mask, axis=1)  # Check for non-zero pixels along rows
+    cols = np.any(mask, axis=0)  # Check for non-zero pixels along columns
+
+    if not np.any(rows) or not np.any(cols):
+        return None  # Return None if no non-zero pixels are found
+
+    # Get the min and max coordinates along each axis
+    tth_min, tth_max = np.where(rows)[0][[0, -1]]
+    eta_min, eta_max = np.where(cols)[0][[0, -1]]
+
+    # Return the bounding box coordinates (tth_min, tth_max, eta_min, eta_max)
+    return np.array([tth_min, tth_max, eta_min, eta_max])
 
 def bbox_features(mask):
     """
