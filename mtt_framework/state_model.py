@@ -151,7 +151,6 @@ class BasicModel(StateModel):
         self.prediciton = self.state['com'] + self.state['velocity'] * dt
     
     def compute_gating_distance(self,measurement):
-        
         diff = measurement['com'] - self.state['com']
         return np.dot(diff.T, diff)
     
@@ -312,7 +311,6 @@ class KalmanModel(StateModel):
         
         return likelihood
     
-    
     def compute_gating_distance(self, measurement):
         
         diff = measurement['com'] - self.state['com']
@@ -344,24 +342,6 @@ class KalmanModel(StateModel):
         # Return a high penalty for unknown event types (optional safeguard)
         else:
             raise ValueError(f"Unknown event type: {event_type}")
-    
-    
-    # def hypothesis_generation(self, measurements, tracks, threshold, dt):
-    #     hypotheses = []
-    #     for track in tracks:
-    #         for measurement in measurements:
-    #             # Compute predicted covariance and state from the previous step
-    #             P_pred, track_state = self.transition(track, dt)  # Kalman prediction step
-            
-    #             # Compute the likelihood of associating the measurement to this track
-    #             likelihood = self.association_likelihood(measurement, track_state, P_pred)
-            
-    #             # If the likelihood is above a threshold, form a hypothesis
-    #             if likelihood > threshold:
-    #                 hypothesis = {'track': track, 'measurement': measurement, 'likelihood': likelihood}
-    #                 hypotheses.append(hypothesis)
-    
-    #     return hypotheses
     
      
 # Subclass 3: Example of a constant acceleration model

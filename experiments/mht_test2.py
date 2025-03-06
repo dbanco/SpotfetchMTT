@@ -20,7 +20,6 @@ from mtt_framework.detection import HDoGDetector
 from mtt_framework.mht_tracker import MHTTracker
 from mtt_system import MTTSystem
 
-
 # Generate synthetic data with overlapping pair of spots
 data, state_vector = generate_synthetic_data('overlapping pair', timesteps=20)
 
@@ -36,8 +35,9 @@ initial_state = {
 spot_detector = ThresholdingDetector(threshold=0.1)
 #track_model = BasicModel(initial_state, feature_extractor=BasicFeatureExtractor())
 track_model= KalmanModel(initial_state, feature_extractor= BasicFeatureExtractor(), process_noise=1e-5, measurement_noise=1e-5, dt=1, )
-mht_tracker = MHTTracker(track_model = track_model, plot_tree= True)
+mht_tracker = MHTTracker(track_model=track_model, plot_tree=True)
 mtt_system = MTTSystem(spot_detector=spot_detector, track_model=track_model, tracker=mht_tracker)
+
 
 # Transition through the data
 for scan in range(len(data)):
@@ -46,5 +46,7 @@ for scan in range(len(data)):
 # Show data
 scanRange = np.arange(20)
 omeRange = np.arange(20)
+
 mht_tracker.tree.plot_all_tracks(data,scanRange,omeRange)
+
     

@@ -15,7 +15,6 @@ from itertools import chain, combinations
 import copy
 import matplotlib.colors as mcolors
 import matplotlib.patches as patches
-from mtt_framework.feature_extraction import find_bounding_box_2D
 
 class HypothesisNode:
     def __init__(self, hypoth_id, track_id, measurement_id, track, scan, parents=None, event_type="persist", cost=0):
@@ -210,60 +209,37 @@ class HypothesisTree:
                 slice_data = data[time_step, :, :, ome]
                 ax = axes[i][t_idx] if len(omeRange) > 1 else axes[t_idx]
                 ax.imshow(slice_data, origin='lower', cmap='viridis')
-                ax.set_xticks([])  # Disable x ticks
-                ax.set_yticks([])  # Disable y ticks
-                ax.set_xticklabels([])  # Disable x labels
-                ax.set_yticklabels([])  # Disable y labels
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
         
         for node in self.nodes.values():
             if node.hypoth_id > -1 and node.best:
                 scan_idx = node.scan
                 for i, ome in enumerate(omeRange):
-                    # Check if the track's ome corresponds to the current ome slice
                     if abs(int(node.track.state['com'][2]) - ome) < 2:
                         ax = axes[i][scan_idx] if len(omeRange) > 1 else axes[scan_idx]
-                        pos = node.track.state['com']  # Center of mass of the object
-                        mask = data[scan_idx, :, :, ome]  # Example mask extraction (adjust as needed)
+                        pos = node.track.state['com']
+                        colors = [self.get_track_color(tid) for tid in node.track_id]
                         
-                        # Calculate the bounding box using the mask, Assuming 2D in tta, eta
-                        bbox = find_bounding_box_2D(mask)
-                        
-                        # If a bounding box is found, proceed with drawing it
-                        if bbox is not None:
-                            tth_min, tth_max, eta_min, eta_max = bbox
-                            print(f"Drawing bounding box for track {node.track_id} at position {pos}")
-                            
-                            # Get the track colors for all track IDs associated with this node
-                            colors = [self.get_track_color(tid) for tid in node.track_id]
-                            
-                            # Iterate over track colors to create bounding boxes for each track
-                            for j, color in enumerate(colors):
-                                spacing = 1.2 * j  # Prevent overlap between bounding boxes
-                                
-                                # Check if the bounding box is relevant to the current ome slice
-                                if abs(int(pos[2]) - ome) < 2:
-                                    rect = patches.Rectangle(
-                                        (tth_min, eta_min),  # Position (tth_min, eta_min)
-                                        tth_max - tth_min,  # Width of the bounding box
-                                        eta_max - eta_min,  # Height of the bounding box
-                                        linewidth= 1,  # Line width of the rectangle
-                                        edgecolor=color,  # Edge color based on the track ID
-                                        facecolor='none',  # No fill color
-                                        linestyle="--"  # Dashed line for the bounding box
-                                    )
-                                    ax.add_patch(rect)  # Add the rectangle to the plot
-                        else:
-                            print(f"No valid bounding box found for node {node.track_id}")
+                        for j, color in enumerate(colors):
+                            spacing = 1.2*j  # Prevent overlap
+                            rect = plt.Rectangle((pos[0] - 5 - spacing, 
+                                                  pos[1] - 5 - spacing), 
+                                                  10 + 2*spacing, 
+                                                  10 + 2*spacing, 
+                                                  edgecolor=color, facecolor='none', linewidth=1)
+                            ax.add_patch(rect)
         
-    # Adjust spacing between subplots
-    plt.subplots_adjust(wspace=0, hspace=0)
-    plt.show()
+        plt.subplots_adjust(wspace=0, hspace=0)
+        plt.show()
 
     
 class MHTTracker:
     """Multiple Hypothesis Tracker for 3D spot tracking."""
-    
-    def __init__(self, track_model= None, gating_threshold=25.0, plot_tree= None):
+ 
+    def __init__(self, track_model, gating_threshold=25.0, plot_tree=False):
         """
         Initialize the tracker.
         
@@ -276,7 +252,6 @@ class MHTTracker:
         self.gating_threshold = gating_threshold
         self.track_model = track_model
         self.plot_tree= plot_tree
-
         pass
     
     def process_measurements(self,measurements,scan):
