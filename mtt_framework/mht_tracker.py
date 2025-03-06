@@ -225,7 +225,7 @@ class HypothesisTree:
                         pos = node.track.state['com']  # Center of mass of the object
                         mask = data[scan_idx, :, :, ome]  # Example mask extraction (adjust as needed)
                         
-                        # Calculate the bounding box using the mask
+                        # Calculate the bounding box using the mask, Assuming 2D in tta, eta
                         bbox = find_bounding_box_2D(mask)
                         
                         # If a bounding box is found, proceed with drawing it
