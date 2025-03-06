@@ -30,22 +30,9 @@ class StateModel(ABC):
         """
         self.state = initial_state
         self.feature_extractor = feature_extractor
-        
-    #@abstractmethod
-    #def compute_features(self, data_masked):
-        """
-        Update the state based on a new measurement.
-
-        Parameters:
-        - data_masked (arra)
-
-        Returns:
-        - measurement (dict): a single measurement
-        """
-    #    return Measurement(data_masked)
-        
+       
     @abstractmethod
-    def get_measurements(self, blobs, data):
+    def get_measurements(self, frame, blobs):
         """
         Update the state based on a new measurement.
 
@@ -61,7 +48,7 @@ class StateModel(ABC):
         
         for blob_label in unique_labels:
             mask = (blobs == blob_label)
-            x_masked = data * mask
+            x_masked = frame * mask
             # Create a Detection object
             detection = Detection(blob_label, mask, x_masked)
             measurement = self.feature_extractor.extract_features(detection)
@@ -105,20 +92,13 @@ class BasicModel(StateModel):
         super().__init__(initial_state, feature_extractor)
         # initialize previous state
         self.prev_state = None
+        self.prediction = None
         
-        
-    #def compute_features(self, data_masked):
-        """
-        Call the parent "compute_features" method
-        """
-        
-     #   return super().compute_features(data_masked)
-        
-    def get_measurements(self, blobs, data):
+    def get_measurements(self, frame, blobs):
         """
         Call the parent "get_measurements" method
         """
-        return super().get_measurements(blobs, data)
+        return super().get_measurements(frame, blobs)
 
     
     def update_state(self, measurement, dt):
@@ -135,30 +115,30 @@ class BasicModel(StateModel):
         
         if self.prev_state is not None:
             # convert to numpy
-            current_position = np.array(measurement["com"])  # Convert to numpy array
-            prev_position = np.array(self.prev_state['position'])  # Convert to numpy array
+            current_com = np.array(measurement['com'])  # Convert to numpy array
+            prev_com = np.array(self.prev_state['com'])  # Convert to numpy array
 
             # Calculate velocity using the difference between current and previous CoM Position
-            velocity = (current_position - prev_position) / self.prev_state['dt']
+            velocity = (current_com - prev_com) / self.prev_state['dt']
             self.state['velocity'] = velocity
         else:
             # If no previous state, assume initial state
             self.state['velocity'] = np.zeros(3)
             
         # Update state with measurement directly
-        self.state['position'] = measurement["com"]
+        self.state['com'] = measurement["com"]
         self.state['velocity'] = self.state['velocity']
         self.state['acceleration'] = np.zeros(3)
         
         self.prev_state = {
-            'position': measurement["com"],
+            'com': measurement['com'],
             'velocity': self.state['velocity'],
             'dt': dt
         }
         
         return self.state
     
-    def transition(self, state, dt):
+    def transition(self, dt):
         """
         Transition the state assuming constant velocity.
         
@@ -166,15 +146,41 @@ class BasicModel(StateModel):
         - state (dict): Current state of the object.
         - dt (float): Time delta.
         
-        Returns:
-        - dict: Transitioned state.
         """
-        # Transition position using velocity, assume consisten for now
-        new_position = state['position'] + state['velocity'] * dt
-        new_state = state.copy()
-        new_state['position'] = new_position
-        return new_state
-
+        # Transition com using velocity, assume consisten for now
+        self.prediciton = self.state['com'] + self.state['velocity'] * dt
+    
+    def compute_gating_distance(self,measurement):
+        
+        diff = measurement['com'] - self.state['com']
+        return np.dot(diff.T, diff)
+    
+    def compute_hypothesis_cost(self, tracks, measurement, event_type):
+        """
+        Computes the cost associated with a hypothesis based on the event type.
+    
+        Parameters:
+        - tracks: A single track (for "persist") or a list of tracks (for "overlap").
+        - measurement: The measurement being considered, containing its center of mass ('com').
+        - event_type (str): The type of event ("persist" or "overlap").
+    
+        Returns:
+        - cost (float): Scalar value based on euclidean distance between track(s) and measurement
+        """
+        
+        # Compute cost for persistence: Distance between track's current CoM and the measurement CoM
+        if event_type == 'persist':
+            return euclidean_dist(tracks.state['com'], measurement['com'])
+        
+        # Compute cost for overlap: Average CoM of merged tracks and distance to measurement CoM
+        elif event_type == 'overlap':
+            # Compute the average center of mass of all nodes in the subset
+            avg_com = sum(track.state['com'] for track in tracks) / len(tracks)
+            return euclidean_dist(avg_com, measurement['com'])
+        
+        # Return a high penalty for unknown event types (optional safeguard)
+        else:
+            raise ValueError(f"Unknown event type: {event_type}")
 
 # Subclass 2: Example of a Kalman Filter model
 class KalmanModel(StateModel):
@@ -190,8 +196,11 @@ class KalmanModel(StateModel):
         - dt (float): Constant time delta between measurements.
         """
         # Initialize state (position and velocity)
-        self.state = np.hstack((initial_state['position'], initial_state['velocity']))  # [tta, eta, ome, v_tta, v_eta, v_ome]
-        
+        #self.state = np.hstack((initial_state['com'], initial_state['velocity']))  # [tta, eta, ome, v_tta, v_eta, v_ome]
+        self.state = {
+            'com': initial_state['com'],
+            'velocity': initial_state['velocity'],
+            }
         # 6D state covariance matrix (position and velocity)
         self.P = np.eye(6)  # Identity matrix for simplicity
         
@@ -205,7 +214,7 @@ class KalmanModel(StateModel):
             [0, 0, 0, 0, 0, 1]
         ])
         
-        # Measurement matrix (assumes we measure both position and velocity)
+        # Measurement matrix (assumes we measure both position)
         self.H = np.array([
             [1, 0, 0, 0, 0, 0],  # Mapping position components of state to measurement
             [0, 1, 0, 0, 0, 0],
@@ -221,17 +230,11 @@ class KalmanModel(StateModel):
         # Time step (dt)
         self.dt = dt
         
-    #def compute_features(self, data_masked):
-        """
-        Call the parent "compute_features" method
-        """
-     #   return super().compute_features(data_masked)
-        
-    def get_measurements(self, blobs, data):
+    def get_measurements(self, frame, blobs):
         """
         Call the parent "get_measurements" method
         """
-        return super().get_measurements(blobs, data)
+        return super().get_measurements(frame, blobs)
     
     def update_state(self, measurement, dt):
         """
@@ -244,10 +247,11 @@ class KalmanModel(StateModel):
         - dict: Updated state (position, velocity).
         """
         # Measurement vector
-        z = np.hstack((measurement["com"]))
+        z = np.array(measurement['com'])
+        state_vector = np.hstack([self.state['com'], self.state['velocity']])
 
         # Innovation (residual)
-        y = z - np.dot(self.H, self.state)
+        y = z - np.dot(self.H, state_vector)
 
         # Innovation covariance: S_k = H * P_k|k-1 * H.T + R
         S = np.dot(self.H, np.dot(self.P, self.H.T)) + self.R
@@ -256,16 +260,19 @@ class KalmanModel(StateModel):
         K = np.dot(np.dot(self.P, self.H.T), np.linalg.inv(S)) 
 
         # State update: x_k|k = x_k|k-1 + K * y_k
-        self.state = self.state + np.dot(K, y)
+        update_state = state_vector + np.dot(K, y)
+        
+        self.state['com'] = update_state[:3]
+        self.state['velocity']= update_state[3:]
 
         # Covariance update: P_k|k = (I - K * H) * P_k|k-1
         I = np.eye(self.P.shape[0])  # Identity matrix
         self.P = np.dot(I - np.dot(K, self.H), self.P)
 
 
-        return {'position': self.state[:3], 'velocity': self.state[3:], 'dt':dt}  # Return position and velocity
+        return {'com': self.state['com'], 'velocity': self.state['velocity'], 'dt':dt}  # Return position and velocity
 
-    def transition(self, state, dt):
+    def transition(self, dt):
         """
         Predict the next state assuming constant velocity.
         
@@ -276,11 +283,18 @@ class KalmanModel(StateModel):
         - dict: Transitioned state.
         """
         # Predict next state using the transition matrix F
-        self.state = np.dot(self.F, self.state)
+        state_vector = np.hstack([self.state['com'], self.state['velocity']])
+        pred_state = np.dot(self.F, state_vector)
+        
+        # Update the state dictionary
+        self.state['com'] = pred_state[:3]  # Position (com)
+        self.state['velocity'] = pred_state[3:]  # Velocity
+
+        
         self.P = np.dot(np.dot(self.F, self.P), self.F.T) + self.Q
         
         # Return the predicted state (position and velocity)
-        return {'position': self.state[:3], 'velocity': self.state[3:]}
+        return {'com': self.state['com'], 'velocity': self.state['velocity']}
     
     
     def association_likelihood(self, z_m, track_state, P_pred):
@@ -299,22 +313,55 @@ class KalmanModel(StateModel):
         return likelihood
     
     
-    def hypothesis_generation(self, measurements, tracks, threshold, dt):
-        hypotheses = []
-        for track in tracks:
-            for measurement in measurements:
-                # Compute predicted covariance and state from the previous step
-                P_pred, track_state = self.transition(track, dt)  # Kalman prediction step
-            
-                # Compute the likelihood of associating the measurement to this track
-                likelihood = self.association_likelihood(measurement, track_state, P_pred)
-            
-                # If the likelihood is above a threshold, form a hypothesis
-                if likelihood > threshold:
-                    hypothesis = {'track': track, 'measurement': measurement, 'likelihood': likelihood}
-                    hypotheses.append(hypothesis)
+    def compute_gating_distance(self, measurement):
+        
+        diff = measurement['com'] - self.state['com']
+        return np.dot(diff.T, diff)
     
-        return hypotheses
+    def compute_hypothesis_cost(self, tracks, measurement, event_type):
+        """
+        Computes the cost associated with a hypothesis based on the event type.
+    
+        Parameters:
+        - tracks: A single track (for "persist") or a list of tracks (for "overlap").
+        - measurement: The measurement being considered, containing its center of mass ('com').
+        - event_type (str): The type of event ("persist" or "overlap").
+    
+        Returns:
+        - cost (float): Scalar value based on euclidean distance between track(s) and measurement
+        """
+        
+        # Compute cost for persistence: Distance between track's current CoM and the measurement CoM
+        if event_type == 'persist':
+            return euclidean_dist(tracks.state['com'], measurement['com'])
+        
+        # Compute cost for overlap: Average CoM of merged tracks and distance to measurement CoM
+        elif event_type == 'overlap':
+            # Compute the average center of mass of all nodes in the subset
+            avg_com = sum(track.state['com'] for track in tracks) / len(tracks)
+            return euclidean_dist(avg_com, measurement['com'])
+        
+        # Return a high penalty for unknown event types (optional safeguard)
+        else:
+            raise ValueError(f"Unknown event type: {event_type}")
+    
+    
+    # def hypothesis_generation(self, measurements, tracks, threshold, dt):
+    #     hypotheses = []
+    #     for track in tracks:
+    #         for measurement in measurements:
+    #             # Compute predicted covariance and state from the previous step
+    #             P_pred, track_state = self.transition(track, dt)  # Kalman prediction step
+            
+    #             # Compute the likelihood of associating the measurement to this track
+    #             likelihood = self.association_likelihood(measurement, track_state, P_pred)
+            
+    #             # If the likelihood is above a threshold, form a hypothesis
+    #             if likelihood > threshold:
+    #                 hypothesis = {'track': track, 'measurement': measurement, 'likelihood': likelihood}
+    #                 hypotheses.append(hypothesis)
+    
+    #     return hypotheses
     
      
 # Subclass 3: Example of a constant acceleration model
@@ -323,18 +370,11 @@ class ConstantAccelerationStateModel(StateModel):
     A state model that assumes constant acceleration between measurements.
     """
     
-    #def compute_features(self, data_masked):
-     #   """
-     #   Call the parent "compute_features" method
-     #   """
-        
-     #   return super().compute_features(data_masked)
-        
-    def get_measurements(self, blobs, data):
+    def get_measurements(self, frame, blobs):
         """
         Call the parent "get_measurements" method
         """
-        return super().get_measurements(blobs, data)
+        return super().get_measurements(frame, blobs)
     
     def update_state(self, measurement):
         """
@@ -370,84 +410,49 @@ class ConstantAccelerationStateModel(StateModel):
         new_state['velocity'] = new_velocity
         return new_state
 
-
-class Measurement:
-    """Represents a measurement (candidate spot) in 3D space."""
+def persist_loglikelihood(state_model,measurement,track):
+    """
+    Computes loglikelihood of a measurement being associated with a track
     
-    def __init__(self, x, prev_com= None, prev_velocity= None, dt=1):
-        """
-        Initialize a measured spot.
-        
-        Parameters:
-        -----------
-            - x (array): masked pixel intesity data
-        
-        Properties:
-        - com (array): center of mass (tt,eta,ome) of the blob.
-        - bound_box (array): boudning box (tth1,tth2,eta1,eta2,ome1,ome2) of blob 
-        - intensity (float): Total intensity of the detected spot.
-        """
-        """
-        self.com = compute_center_of_mass(x)
-        self.bound_box = find_bounding_box(x)
-        self.intensity = compute_intensity(x)
-        
-        if prev_com is not None and prev_velocity is not None:
-            self.com_velocity = compute_velocity (self.com,prev_com)
-            self.com_acceleration = compute_acc(self.com_velocity,prev_velocity)
-        else:
-            self.com_velocity = np.zeros_like(self.com)
-            self.com_acceleration = np.zeros_like(self.com)
-            
-        """
-        pass
-
-class Track:
-    """Represents a tracked spot in 3D space."""
+    Parameters:
+    -----------
+    - state_model
+    - measurement
+    - track
+    """
     
-    def __init__(self, measurement):
-        """
-        Initialize a detected spot.
-        
-        Parameters:
-        - measurment: A measurement object
-        
-        Properties:
-        - com (array): center of mass (tt,eta,ome) of the blob.
-        - bound_box (array): boudning box (tth1,tth2,eta1,eta2,ome1,ome2) of blob 
-        - intensity (float): Total intensity of the detected spot.
-        - overlap
-        - com_velocity
-        - Maybe other things related to state transition model?
-        
-        """
+    loglikelihood = 1
+    
+    return loglikelihood
 
-        self.com = measurement.com
-        self.bound_box = measurement.bound_box
-        self.intensity = measurement.intensity
-        self.com_velocity = measurement.com_velocity
-        self.com_acceleration = measurement.com_acceleration
-        #placeholder for degree of overlap
-        self.overlap = 0    
+def death_loglikelihood(state_model,measurement,track):
+    """
+    Computes loglikelihood of a track dying
+    
+    Parameters:
+    -----------
+    - state_model
+    - track
+    """
+    loglikelihood = 1
+    
+    return loglikelihood
+    
+def euclidean_dist(position1, position2, association_cost=0):
+    """
+    Compute the Euclidean distance between a track state and a measurement,
+    incorporating an optional association cost.
 
-    def update(self, measurement):
-        """
-        Update the track with a new detection.
-        
-        Parameters:
-        - measurment: A measurement object
-        """
-        
-        self.com = measurement.com
-        self.bound_box = measurement.bound_box
-        self.intensity = measurement.intensity
-        self.com_velocity = measurement.com_velocity
-        self.com_acceleration = measurement.com_acceleration
-        #placeholder for degree of overlap
-        self.overlap = 0
+    Parameters:
+    - state: 3D NumPy array representing the track's current position [x, y, z].
+    - measurement: 3D NumPy array representing the new measurement [x, y, z].
+    - association_cost: Additional cost from the M2TA matrix (default: 0).
 
-
-
+    Returns:
+    - Computed cost (float).
+    """
+    distance = np.linalg.norm(position1 - position2)  # Euclidean distance
+    return distance + association_cost
 
 
 
