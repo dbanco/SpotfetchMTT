@@ -116,7 +116,8 @@ def thresholdingDetection(data,threshold):
         - num_blobs : int
             Number of blobs detected.
     """   
-    blobs, num_blobs = data[data < threshold] = 0
+    data[data < threshold] = 0
+    blobs, num_blobs = label(data)
     return blobs, num_blobs
 
 

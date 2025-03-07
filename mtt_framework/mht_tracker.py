@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 from itertools import chain, combinations
 import copy
 import matplotlib.colors as mcolors
-import matplotlib.patches as patches
 
 class HypothesisNode:
     def __init__(self, hypoth_id, track_id, measurement_id, track, scan, parents=None, event_type="persist", cost=0):
@@ -239,7 +238,7 @@ class HypothesisTree:
 class MHTTracker:
     """Multiple Hypothesis Tracker for 3D spot tracking."""
  
-    def __init__(self, track_model, gating_threshold=25.0, plot_tree=False):
+    def __init__(self, track_model, gating_threshold=25.0,n_scan_pruning=4, plot_tree=False):
         """
         Initialize the tracker.
         
@@ -250,6 +249,7 @@ class MHTTracker:
         self.dt=1
         self.current_scan = 0
         self.gating_threshold = gating_threshold
+        self.n_scan_pruning = n_scan_pruning
         self.track_model = track_model
         self.plot_tree= plot_tree
         pass
@@ -267,7 +267,7 @@ class MHTTracker:
             # 2. Generate, evaluate, prune hypotehses
             self.update_hypothesis_tree()
             self.evaluate_hypotheses()
-            self.tree.pruning(3)
+            self.tree.pruning(self.n_scan_pruning)
             
             # 3. Prediction
             self.prediction()
