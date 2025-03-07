@@ -39,7 +39,7 @@ spotInd = 0
 x = spotData['Xm'][spotInd]
 y = spotData['Ym'][spotInd]
 frm = int(spotData['ome_idxs'][spotInd])
-eta, tth = detect.xyToEtaTthRecenter(x,y,params)
+eta, tth = util.xyToEtaTthRecenter(x,y,params)
 
 fname = dataFileSequence[0]
 
@@ -49,5 +49,5 @@ fname = dataFileSequence[0]
 roi = util.loadPolarROI(fname,tth,eta,frm,params)
 
 # 3D tensor
-roi3D = util.loadPolarROI3D(fnames, tth, eta, frame, params):
+roi3D = util.loadPolarROI3D(fname,tth,eta,frm,params)
 

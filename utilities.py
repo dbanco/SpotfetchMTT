@@ -17,6 +17,7 @@ email: dpqb10@gmail.com
 """
 import numpy as np
 import scipy as sp
+import pandas as pd
 import yaml
 import h5py
 import os
@@ -458,7 +459,7 @@ def loadROI(dataPath, scan, frame, etaRoi, tthRoi, params):
         Loaded polar ROI.
     """
     if os.path.isdir(dataPath):
-        fnames = util.timeToFile(scan, dataPath)
+        fnames = timeToFile(scan, dataPath)
         isFile = False
     else:
         fnames = dataPath
@@ -610,7 +611,7 @@ def loadDexPolarRoi3D(fnames, tth, eta, frame, params):
     roiSize = params['roiSize']
     detectDist, mmPerPixel, ff_trans, ff_tilt = loadYamlDataDexela(yamlFile, tth, eta)
     dome = (roiSize[2] - 1) / 2
-    frmRange = util.wrapFrame(np.arange(frame - dome, frame + dome + 1))
+    frmRange = wrapFrame(np.arange(frame - dome, frame + dome + 1))
 
     # Construct radial and eta domains
     rad_dom, eta_dom = polarDomain(detectDist, mmPerPixel, tth, eta, roiSize)
@@ -703,7 +704,7 @@ def loadEigerPolarRoi3D(fname,tth,eta,frame,params):
     roiSize = params['roiSize']
     imSize = params['imSize']
     dome = (roiSize[2]-1)/2
-    frmRange = util.wrapFrame(np.arange(frame-dome,frame+dome+1))
+    frmRange = wrapFrame(np.arange(frame-dome,frame+dome+1))
     
     detectDist, mmPerPixel, ff_trans, ff_tilt = loadYamlData(params)
     
@@ -714,20 +715,18 @@ def loadEigerPolarRoi3D(fname,tth,eta,frame,params):
     Ainterp,new_center,x_cart,y_cart = getInterpParamsEiger(tth,eta,params)
     
     ff1_pix = panelPixelsEiger(ff_trans,mmPerPixel,imSize)
-    roi3D = np.zeros(roiSize)
-    for i, frm in enumerate(frmRange):
-        # 3. Load needed Cartesian ROI pixels
-        if params['detector'] == 'eiger':
-            roi = loadEigerPanelROI(x_cart, y_cart, ff1_pix, fname, frm)
-        elif params['detector'] == 'eiger_sim':
-            roi = loadEigerSimPanelROI(x_cart, y_cart, ff1_pix, fname, frm)
-        # 4. Apply interpolation matrix to Cartesian pixels get Polar values
-        roi_polar_vec = Ainterp.dot(roi.flatten())
-        # 5. Reshape and output roi
-        roi_polar = np.reshape(roi_polar_vec, roiSize[:2])
-        roi3D[:, :, i] = roi_polar
+
+    # 3. Load needed Cartesian ROI pixels
+    if params['detector'] == 'eiger':
+        roi = loadEigerPanelROI3D(x_cart, y_cart, ff1_pix, fname, frmRange)
+    elif params['detector'] == 'eiger_sim':
+        roi = loadEigerSimPanelROI3D(x_cart, y_cart, ff1_pix, fname, frmRange)
+    # 4. Apply interpolation matrix to Cartesian pixels get Polar values
+    roi_polar_vec = Ainterp.dot(roi.reshape([roi.shape[0]*roi.shape[1],roi.shape[2]]))
+    # 5. Reshape and output roi
+    roi_polar = np.reshape(roi_polar_vec, roiSize)
     
-    return roi3D
+    return roi_polar
 
 def loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, frame, params, dexShape=DEX_SHAPE):
     """
@@ -832,6 +831,41 @@ def loadEigerPanelROI(x_cart, y_cart, ff1_pix, fname, frame):
     img[img > 4294000000] = 0
     return img
 
+def loadEigerPanelROI3D(x_cart, y_cart, ff1_pix, fname, frameRange):
+    """
+    Loads a Region of Interest (ROI) for the Eiger detector in Cartesian coordinates.
+
+    Parameters:
+    -----------
+    x_cart : list or ndarray
+        X-coordinates of the ROI in the Cartesian system.
+    y_cart : list or ndarray
+        Y-coordinates of the ROI in the Cartesian system.
+    ff1_pix : ndarray
+        Flat-field parameters for the panel.
+    fname : str
+        File name of the image series.
+    frame : int
+        Frame index to load.
+
+    Returns:
+    --------
+    ndarray
+        Loaded ROI image.
+    """
+    # Compute panel-specific coordinates
+    x_pan, y_pan = getEigerPixels(x_cart, y_cart, ff1_pix)
+
+    # Load image data
+    img = np.zeros((y_cart[1]-y_cart[0],x_cart[1]-x_cart[0],len(frameRange)))
+    ims = imageseries.open(fname, format='eiger-stream-v1')
+    for i, frm in enumerate(frameRange):
+        img[:,:,i] = ims[int(frm), y_pan[0]:y_pan[1], x_pan[0]:x_pan[1]].copy()
+
+    # Mask invalid pixel values
+    img[img > 4294000000] = 0
+    return img
+
 def loadEigerSimPanelROI(x_cart, y_cart, ff1_pix, fname, frame):
     """
     Loads a simulated Region of Interest (ROI) for the Eiger detector.
@@ -874,6 +908,52 @@ def loadEigerSimPanelROI(x_cart, y_cart, ff1_pix, fname, frame):
 
     # Extract and return the ROI
     img = imgFull[y_pan[0]:y_pan[1], x_pan[0]:x_pan[1]].copy()
+    return img
+
+def loadEigerSimPanelROI3D(x_cart, y_cart, ff1_pix, fname, frameRange):
+    """
+    Loads a simulated Region of Interest (ROI) for the Eiger detector.
+
+    Parameters:
+    -----------
+    x_cart : list or ndarray
+        X-coordinates of the ROI in the Cartesian system.
+    y_cart : list or ndarray
+        Y-coordinates of the ROI in the Cartesian system.
+    ff1_pix : ndarray
+        Flat-field parameters for the panel.
+    fname : str
+        File name of the simulation data (NumPy file).
+    frame : int
+        Frame index to load.
+
+    Returns:
+    --------
+    ndarray
+        Loaded simulated ROI image.
+    """
+    # Compute panel-specific coordinates
+    x_pan, y_pan = getEigerPixels(x_cart, y_cart, ff1_pix)
+
+    # Load simulation data
+    simData = np.load(fname)
+    shp = simData['shape']
+    
+    img = np.zeros((y_cart[1]-y_cart[0],x_cart[1]-x_cart[0],len(frameRange)))
+    for i, frm in enumerate(frameRange):
+        # Load data for the specific frame
+        frame = int(frm - 2)
+        rowD = simData[f'{frame}_row']
+        colD = simData[f'{frame}_col']
+        datD = simData[f'{frame}_data']
+           
+        # Populate the full image array
+        imgFull = np.zeros(shp)
+        for j in range(len(rowD)):
+            imgFull[rowD[j], colD[j]] = datD[j]
+    
+        # Extract and return the ROI
+        img[:,:,i] = imgFull[y_pan[0]:y_pan[1], x_pan[0]:x_pan[1]].copy()
     return img
 
 def loadEigerPanelROIArray(x_cart, y_cart, ff1_pix, fname, frames):
