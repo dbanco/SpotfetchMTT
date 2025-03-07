@@ -16,7 +16,7 @@ import copy
 import matplotlib.colors as mcolors
 
 class HypothesisNode:
-    def __init__(self, hypoth_id, track_id, measurement_id, track, scan, parents=None, event_type="persist", cost=0):
+    def __init__(self, hypoth_id, track_id, measurement_id, track, scan, parents=None, event_type="persist", cost=0, best=False):
         """
         Represents a node in the hypothesis tree.
 
@@ -37,7 +37,7 @@ class HypothesisNode:
         self.scan = scan
         self.event_type = event_type  # Track event type
         self.cost = cost  # Log-likelihood
-        self.best = False
+        self.best = best
 
     def add_child(self, child_node):
         """Adds a child node to this hypothesis."""
@@ -52,7 +52,7 @@ class HypothesisTree:
         self.fig, self.axes = None, None
         self.track_id_colors = {}
 
-    def add_node(self, track, scan, measurement_id, parent_ids=None, event_type="persist", cost=0):
+    def add_node(self, track, scan, measurement_id, parent_ids=None, event_type="persist", cost=0, best=False):
         """
         Adds a new node to the hypothesis tree.
         - track_id is always a set.
@@ -88,7 +88,7 @@ class HypothesisTree:
                 parents_cost += node.cost
             
             # Create new hypothesis node
-            new_node = HypothesisNode(hypoth_id, track_id, measurement_id, track, scan, parent_nodes, event_type, cost=cost + parents_cost)
+            new_node = HypothesisNode(hypoth_id, track_id, measurement_id, track, scan, parent_nodes, event_type, cost=cost + parents_cost, best=best)
 
             # Attach new node to each parent
             for parent in parent_nodes:
@@ -230,10 +230,10 @@ class HypothesisTree:
                     colors = [self.get_track_color(tid) for tid in node.track_id]
                     for j, color in enumerate(colors):
                         spacing = 1.2*j  # Prevent overlap
-                        rect = plt.Rectangle((boxpos[0] - boxsiz[0]/2 - spacing, 
-                                              boxpos[1] - boxsiz[1]/2 - spacing), 
-                                              boxsiz[0] + 2*spacing, 
+                        rect = plt.Rectangle((boxpos[1] - boxsiz[1]/2 - spacing, 
+                                              boxpos[0] - boxsiz[0]/2 - spacing), 
                                               boxsiz[1] + 2*spacing, 
+                                              boxsiz[0] + 2*spacing, 
                                               edgecolor=color, facecolor='none', linewidth=1)
                         ax.add_patch(rect)
                         
@@ -343,31 +343,41 @@ class MHTTracker:
         
         pass
 
+
     def remove_unassociated_nodes(self):
         """
         Removes hypothesis nodes that do not have any association and
         assigns a "death" hypothesis to parent nodes that lose all children.
+        Additionally, ensures that unassociated nodes labeled as 'best' 
+        receive a death hypothesis instead of removal.
         """
         # Identify columns with no associations (i.e., all zeros)
         unassociated_cols = np.where(~self.m2ta_matrix.any(axis=0))[0]
         
         # Retrieve the corresponding hypothesis nodes
-        to_remove = [self.tree.nodes[self.m2ta_to_hypoth_id[k]] for k in unassociated_cols]
-
-        # Remove nodes and handle death hypotheses
-        for node in to_remove:
+        unassociated_nodes = [self.tree.nodes[self.m2ta_to_hypoth_id[k]] for k in unassociated_cols]
+    
+        # Recursive removal function
+        def recursive_remove(node):
             parents = node.parents.copy()  # Copy to avoid modification during iteration
             del self.tree.nodes[node.hypoth_id]
-            
+    
             for parent in parents:
                 parent.children.remove(node)
-                
-                # # Assign a death hypothesis if parent loses all children (instead of removal)
-                # if not parent.children and parent is not self.tree.root:
-                #     self.tree.add_node(track=copy.deepcopy(parent.track),
-                #                        scan=self.current_scan,measurement_id=None,
-                #                        parent_ids=[parent.hypoth_id], event_type="death", cost=0)
-    
+                if not parent.children and parent is not self.tree.root:
+                    recursive_remove(parent) 
+        
+        # Remove unassociated nodes that are not labeled as best
+        for node in unassociated_nodes:
+            if node.best:  
+                # If the node is labeled best, assign it a death hypothesis
+                self.tree.add_node(track=copy.deepcopy(node.track),
+                                   scan=self.current_scan, measurement_id=None,
+                                   parent_ids=[node.hypoth_id], event_type="death", 
+                                   cost=0, best=True)  # Keep the 'best' label
+            else:
+                recursive_remove(node)
+      
     def get_associated_leaf_nodes(self, measurement_index):
         """
         Finds leaf nodes associated with a measurement using the m2ta matrix.
@@ -471,9 +481,13 @@ class MHTTracker:
         - Marks the selected nodes and propagates the selection to their parents.
         - Resets all other nodes to best=False before marking the best path.
         """
-        # Reset all nodes to best=False
+        # Reset all nodes to best=False unless they were dead best tracks
+        best_dead_hypotheses = []
         for node in self.tree.nodes.values():
-            node.best = False
+            if node.best and node.event_type == 'death':
+                best_dead_hypotheses.append(node)
+            else:
+                node.best = False
         
         # Get the optimal set of hypotheses
         best_hypotheses, unassigned_measurements = self.setup_integer_program()
@@ -498,13 +512,15 @@ class MHTTracker:
                 
         # Mark selected nodes and propagate to parents
         def propagate_best(node):
-            if isinstance(node, HypothesisNode) and not node.best:
+            if isinstance(node, HypothesisNode):
                 node.best = True
                 for parent in node.parents:
                     propagate_best(parent)
         
         # Call recursively on all best hypotheses
         for node in best_hypotheses:
+            propagate_best(node)
+        for node in best_dead_hypotheses:
             propagate_best(node)
             
         self.tree.update_leaf_nodes()

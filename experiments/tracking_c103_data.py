@@ -44,8 +44,11 @@ params['roiSize'] = [30,30,11]
 
 dataFileSequence = util.getDataFileSequence(dataFile,scanRange)   
 
+# =============================================================================
+# spotInd values to show: 0,1,2,3
+# =============================================================================
 # Spot location
-spotInd = 0
+spotInd = 4
 x = spotData['Xm'][spotInd]
 y = spotData['Ym'][spotInd]
 frm = int(spotData['ome_idxs'][spotInd])
@@ -64,7 +67,7 @@ initial_state = {
 }
 
 # Instantiate Detector, Feature Extractor, Track Model
-spot_detector = ThresholdingDetector(threshold=200)
+spot_detector = ThresholdingDetector(threshold=50)
 # spot_detector = HDoGDetector()
 #track_model = BasicModel(initial_state, feature_extractor=BasicFeatureExtractor())
 track_model= KalmanModel(initial_state, feature_extractor= BasicFeatureExtractor(), process_noise=1e-5, measurement_noise=1e-5, dt=1, )

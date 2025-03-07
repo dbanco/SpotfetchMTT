@@ -186,6 +186,6 @@ def DoG(x, sigma, dsigma, gamma=2):
     """
     g1 = gaussian_filter(x, sigma=sigma)
     g2 = gaussian_filter(x, sigma=sigma + dsigma)
-    return (g2 - g1) / (np.mean(sigma) * np.mean(dsigma))
+    return sigma[0]**(gamma-1)*(g2 - g1) / (np.mean(sigma) * np.mean(dsigma))
 
 
