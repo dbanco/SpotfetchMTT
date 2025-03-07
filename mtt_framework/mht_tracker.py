@@ -146,9 +146,6 @@ class HypothesisTree:
         for node in to_remove:
             recursive_delete(node)
         
-        # Cleanup: Remove deleted nodes from their parents' children lists
-        # for node in best_nodes:
-        #     node.children = [child for child in node.children if child in self.nodes]
 
     def visualize_hypothesis_tree(self):
         """
@@ -205,7 +202,8 @@ class HypothesisTree:
         """
         Plots all scans and overlays all tracks detected over time.
         """
-        fig, axes = plt.subplots(len(omeRange), len(time_steps), figsize=(40, 20))
+        fig, axes = plt.subplots(len(omeRange), len(time_steps), 
+                                 figsize=(2*len(time_steps), 2*len(omeRange)))
         if len(omeRange) == 1:
             axes = [axes]
         
@@ -413,8 +411,12 @@ class MHTTracker:
                     node1.track_id.isdisjoint(node2.track_id)
                     for node1, node2 in combinations(subset, 2)
                 )
+                all_distinct2 = all(
+                    node1.measurement_id != node2.measurement_id
+                    for node1, node2 in combinations(subset, 2)
+                )
     
-                if all_distinct:
+                if all_distinct and all_distinct2:
                     # Compute cost
                     tracks = [node.track for node in subset]
                     cost = self.track_model.compute_hypothesis_cost(tracks,measurement,'overlap')
