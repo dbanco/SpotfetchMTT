@@ -51,6 +51,7 @@ y = spotData['Ym'][spotInd]
 frm = int(spotData['ome_idxs'][spotInd])
 eta, tth = util.xyToEtaTthRecenter(x,y,params)
 
+# %%
 # =============================================================================
 # Setup Tracker
 # =============================================================================
@@ -63,13 +64,14 @@ initial_state = {
 }
 
 # Instantiate Detector, Feature Extractor, Track Model
-spot_detector = ThresholdingDetector(threshold=80)
+spot_detector = ThresholdingDetector(threshold=200)
 # spot_detector = HDoGDetector()
 #track_model = BasicModel(initial_state, feature_extractor=BasicFeatureExtractor())
 track_model= KalmanModel(initial_state, feature_extractor= BasicFeatureExtractor(), process_noise=1e-5, measurement_noise=1e-5, dt=1, )
 mht_tracker = MHTTracker(track_model=track_model,n_scan_pruning=2, plot_tree=True)
 mtt_system = MTTSystem(spot_detector=spot_detector, track_model=track_model, tracker=mht_tracker)
 
+# %%
 # =============================================================================
 # Run Tracker
 # =============================================================================
@@ -84,11 +86,10 @@ for scan, fname in enumerate(dataFileSequence):
     # Collect data series
     full_data[scan] = data
     
+# %%
 # =============================================================================
 # Plot Tracks on Data
 # =============================================================================
-# %% Show data
-
 scanRange = np.arange(len(dataFileSequence))
 omeRange = np.arange(11)
 mht_tracker.tree.plot_all_tracks(full_data,scanRange,omeRange)

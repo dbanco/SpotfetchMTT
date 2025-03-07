@@ -89,30 +89,34 @@ def compute_center_of_mass(x, labels=None, index=None):
     return np.array(center_of_mass(x, labels=None, index=None))
 
 def find_bounding_box(mask):
-  """
-  Finds the bounding box coordinates of non-zero pixels in a binary mask.
+    """
+    Finds the bounding box coordinates of non-zero pixels in a 3D binary mask.
 
-  Parameters:
-  -----------
-    mask: A 3D numpy array representing the binary mask or masked data
+    Parameters:
+    -----------
+        mask: A 3D numpy array representing the binary mask or masked data
 
-  Returns:
-  --------
-    A tuple (tth_min, tth_max, eta_min, eta_max, ome_min, ome_max) representing 
-    the bounding box coordinates or None if no non-zero pixels are found.
-  """
-  rows = np.any(mask, axis=1)
-  cols = np.any(mask, axis=0)
-  tubs = np.any(mask, axis=2)
-  
-  if not np.any(rows) or not np.any(cols) or not np.any(tubs):
-    return None  # Return None if the mask is empty
+    Returns:
+    --------
+        A tuple (tth_min, tth_max, eta_min, eta_max, ome_min, ome_max) 
+        representing the bounding box coordinates, or None if no non-zero 
+        pixels are found.
+    """
+    # Project along each axis to determine extents
+    tth_any = np.any(mask, axis=(1, 2))  # Collapse eta and ome -> (tth,)
+    eta_any = np.any(mask, axis=(0, 2))  # Collapse tth and ome -> (eta,)
+    ome_any = np.any(mask, axis=(0, 1))  # Collapse tth and eta -> (ome,)
 
-  tth_min, tth_max = np.where(rows)[0][[0, -1]]
-  eta_min, eta_max = np.where(cols)[0][[0, -1]]
-  ome_min, ome_max = np.where(tubs)[0][[0, -1]]
-  
-  return np.array([tth_min, tth_max, eta_min, eta_max, ome_min, ome_max])
+    # If mask is completely empty, return None
+    if not np.any(tth_any) or not np.any(eta_any) or not np.any(ome_any):
+        return None
+
+    # Find min and max indices where mask is True
+    tth_min, tth_max = np.where(tth_any)[0][[0, -1]]
+    eta_min, eta_max = np.where(eta_any)[0][[0, -1]]
+    ome_min, ome_max = np.where(ome_any)[0][[0, -1]]
+
+    return np.array([tth_min, tth_max, eta_min, eta_max, ome_min, ome_max])
 
 def find_bounding_box_2D(mask):
     """

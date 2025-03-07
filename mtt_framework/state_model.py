@@ -263,6 +263,10 @@ class KalmanModel(StateModel):
         
         self.state['com'] = update_state[:3]
         self.state['velocity']= update_state[3:]
+        self.state['bbox']= measurement['bbox']
+        self.state['bbox_center']= measurement['bbox_center']
+        self.state['bbox_size']= measurement['bbox_size']
+        self.state['intensity'] = measurement['intensity']
 
         # Covariance update: P_k|k = (I - K * H) * P_k|k-1
         I = np.eye(self.P.shape[0])  # Identity matrix

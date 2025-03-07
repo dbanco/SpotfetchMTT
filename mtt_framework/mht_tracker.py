@@ -222,21 +222,21 @@ class HypothesisTree:
         for node in self.nodes.values():
             if node.hypoth_id > -1 and node.best:
                 scan_idx = node.scan
-                for i, ome in enumerate(omeRange):
-                    if abs(int(node.track.state['com'][2]) - ome) < 2:
-                        ax = axes[i][scan_idx] if len(omeRange) > 1 else axes[scan_idx]
-                        pos = node.track.state['com']
-                        colors = [self.get_track_color(tid) for tid in node.track_id]
+                bbox = node.track.state['bbox']
+                for ome_i in np.arange(bbox[4],bbox[5]+1):
+                    ax = axes[ome_i][scan_idx]
+                    boxpos = node.track.state['bbox_center']
+                    boxsiz = node.track.state['bbox_size']
+                    colors = [self.get_track_color(tid) for tid in node.track_id]
+                    for j, color in enumerate(colors):
+                        spacing = 1.2*j  # Prevent overlap
+                        rect = plt.Rectangle((boxpos[0] - boxsiz[0]/2 - spacing, 
+                                              boxpos[1] - boxsiz[1]/2 - spacing), 
+                                              boxsiz[0] + 2*spacing, 
+                                              boxsiz[1] + 2*spacing, 
+                                              edgecolor=color, facecolor='none', linewidth=1)
+                        ax.add_patch(rect)
                         
-                        for j, color in enumerate(colors):
-                            spacing = 1.2*j  # Prevent overlap
-                            rect = plt.Rectangle((pos[0] - 5 - spacing, 
-                                                  pos[1] - 5 - spacing), 
-                                                  10 + 2*spacing, 
-                                                  10 + 2*spacing, 
-                                                  edgecolor=color, facecolor='none', linewidth=1)
-                            ax.add_patch(rect)
-        
         plt.subplots_adjust(wspace=0, hspace=0)
         plt.show()
 
@@ -362,11 +362,11 @@ class MHTTracker:
             for parent in parents:
                 parent.children.remove(node)
                 
-                # Assign a death hypothesis if parent loses all children (instead of removal)
-                if not parent.children and parent is not self.tree.root:
-                    self.tree.add_node(track=copy.deepcopy(parent.track),
-                                       scan=self.current_scan,measurement_id=None,
-                                       parent_ids=[parent.hypoth_id], event_type="death", cost=0)
+                # # Assign a death hypothesis if parent loses all children (instead of removal)
+                # if not parent.children and parent is not self.tree.root:
+                #     self.tree.add_node(track=copy.deepcopy(parent.track),
+                #                        scan=self.current_scan,measurement_id=None,
+                #                        parent_ids=[parent.hypoth_id], event_type="death", cost=0)
     
     def get_associated_leaf_nodes(self, measurement_index):
         """

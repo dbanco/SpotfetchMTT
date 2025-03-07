@@ -21,7 +21,7 @@ from mtt_framework.mht_tracker import MHTTracker
 from mtt_system import MTTSystem
 
 # Generate synthetic data with overlapping pair of spots
-data, state_vector = generate_synthetic_data('overlapping pair', timesteps=20)
+data, state_vector = generate_synthetic_data('three spots', timesteps=20)
 
 # Initial state with starting position and velocity (e.g., from the first measurement)
 initial_state = {
