@@ -98,6 +98,12 @@ class HypothesisTree:
         self.nodes[hypoth_id] = new_node
         return new_node  # Return new node for tracking
     
+    def update_leaf_nodes(self):
+        """
+        Updates leaf nodes with be surviving nodes
+        """
+        self.leaf_nodes = [node for node in self.nodes.values() if not node.children and node.event_type != 'death']
+        
     def pruning(self, N):
         """
         Prunes the hypothesis tree by removing non-best nodes that are at least N scans away from the most recent best hypothesis.
@@ -199,7 +205,7 @@ class HypothesisTree:
         """
         Plots all scans and overlays all tracks detected over time.
         """
-        fig, axes = plt.subplots(len(omeRange), len(time_steps), figsize=(20, 20))
+        fig, axes = plt.subplots(len(omeRange), len(time_steps), figsize=(40, 20))
         if len(omeRange) == 1:
             axes = [axes]
         
@@ -302,7 +308,7 @@ class MHTTracker:
             self.tree.add_node(track=track, scan=0, measurement_id=i, event_type="birth", parent_ids=[-1])
             
         # Update leaf nodes
-        self.tree.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
+        self.tree.update_leaf_nodes()
     
     def prediction(self):
         for node in self.tree.leaf_nodes:
@@ -319,7 +325,7 @@ class MHTTracker:
         - m2ta_matrix (np.array)
         """
         self.measurements = measurements
-        self.tree.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
+        self.tree.update_leaf_nodes()
         num_leaf_nodes = len(self.tree.leaf_nodes)
         self.m2ta_matrix = np.zeros((len(measurements),num_leaf_nodes))
         self.m2ta_to_hypoth_id = np.zeros(num_leaf_nodes)
@@ -357,8 +363,10 @@ class MHTTracker:
                 parent.children.remove(node)
                 
                 # Assign a death hypothesis if parent loses all children (instead of removal)
-                if not parent.children and parent is not self.root:
-                    self.add_node(track=copy.deepcopy(parent.track), scan=self.current_scan, parent_ids=[parent.hypoth_id], event_type="death", cost=0)
+                if not parent.children and parent is not self.tree.root:
+                    self.tree.add_node(track=copy.deepcopy(parent.track),
+                                       scan=self.current_scan,measurement_id=None,
+                                       parent_ids=[parent.hypoth_id], event_type="death", cost=0)
     
     def get_associated_leaf_nodes(self, measurement_index):
         """
@@ -454,7 +462,7 @@ class MHTTracker:
     
             # THE LOGIC RELATING TO BIRTHS AND DEATHS NEEDS TO BE FIXED               
     
-        self.tree.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
+        self.tree.update_leaf_nodes()
             
     def evaluate_hypotheses(self):
         """
@@ -499,7 +507,7 @@ class MHTTracker:
         for node in best_hypotheses:
             propagate_best(node)
             
-        self.tree.leaf_nodes = [node for node in self.tree.nodes.values() if not node.children]
+        self.tree.update_leaf_nodes()
            
     def setup_integer_program(self):
         """

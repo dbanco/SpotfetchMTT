@@ -37,11 +37,13 @@ class MTTSystem:
         Processes a single frame of data through the MTT pipeline.
 
         Parameters:
-        - frame: The input data frame containing detection information.
+        - frame: The 3D input data frame containing detection information.
 
         Returns:
         - tracks: The updated set of tracked objects.
         """
+
+        assert len(frame.shape) == 3, "Input data must be 3 dimensional"
         
         # Step 1: Detection
         blobs, num_blobs = self.spot_detector.detect(frame)
