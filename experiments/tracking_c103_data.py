@@ -48,7 +48,7 @@ dataFileSequence = util.getDataFileSequence(dataFile,scanRange)
 # spotInd values to show: 0,1,2,3
 # =============================================================================
 # Spot location
-spotInd = 3
+spotInd = 0
 x = spotData['Xm'][spotInd]
 y = spotData['Ym'][spotInd]
 frm = int(spotData['ome_idxs'][spotInd])

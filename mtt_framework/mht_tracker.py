@@ -111,8 +111,7 @@ class HypothesisTree:
         # Step 1: Identify all "best" nodes at most N scans away from the latest best leaves
         best_leaves = [node for node in self.leaf_nodes if node.best]
         best_nodes = set(best_leaves)
-        
-        # Traverse upward to find all best nodes within N scans, ensuring we don't go beyond the root
+        # Traverse upward to find all best nodes within N scans, stop at root
         for _ in range(N):
             new_best_nodes = set()
             for node in best_nodes:
@@ -121,20 +120,9 @@ class HypothesisTree:
                         break
                     elif parent.best:
                         new_best_nodes.add(parent)
-                if parent is self.root:
-                    break
-            if parent is self.root:
-                break
+
             best_nodes = new_best_nodes
-        
-        # Step 2: Identify non-best children of these best nodes and mark them for removal
-        to_remove = set()
-        for node in best_nodes:
-            for child in node.children:
-                if not child.best:
-                    to_remove.add(child)
-        
-        # Step 3: Recursively remove non-best nodes and their descendants
+            
         def recursive_delete(node):
             for child in list(node.children):  # Use list to avoid modifying set during iteration
                 recursive_delete(child)
@@ -142,9 +130,15 @@ class HypothesisTree:
                 del self.nodes[node.hypoth_id]
             for parent in node.parents:
                 parent.children.remove(node)  # Ensure parent references are updated
+                
+        # Step 2: Recursively remove non-best nodes and their descendants
+        for node in best_nodes:
+            for child in node.children:
+                if not child.best:
+                    recursive_delete(child)
+
         
-        for node in to_remove:
-            recursive_delete(node)
+
         
 
     def visualize_hypothesis_tree(self):
