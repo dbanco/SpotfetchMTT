@@ -82,8 +82,6 @@ class StateModel(ABC):
         """
         pass
 
-
-# Subclass 1: Example of a constant velocity model
 class BasicModel(StateModel):
     """
     A state model that assumes constant velocity between measurements.
@@ -181,7 +179,6 @@ class BasicModel(StateModel):
         else:
             raise ValueError(f"Unknown event type: {event_type}")
 
-# Subclass 2: Example of a Kalman Filter model
 class KalmanModel(StateModel):
     def __init__(self, initial_state, feature_extractor, process_noise, measurement_noise, dt):
         super().__init__(initial_state, feature_extractor)
@@ -234,7 +231,39 @@ class KalmanModel(StateModel):
         Call the parent "get_measurements" method
         """
         return super().get_measurements(frame, blobs)
+
+    def compute_gating_distance(self, measurement):
+        diff = measurement['com'] - self.state['com']
+        return np.dot(diff.T,self.P[:3,:3].dot(diff))
     
+    def compute_hypothesis_cost(self, tracks, measurement, event_type):
+        """
+        Computes the cost associated with a hypothesis based on the event type.
+    
+        Parameters:
+        - tracks: A single track (for "persist") or a list of tracks (for "overlap").
+        - measurement: The measurement being considered, containing its center of mass ('com').
+        - event_type (str): The type of event ("persist" or "overlap").
+    
+        Returns:
+        - cost (float): Scalar value based on euclidean distance between track(s) and measurement
+        """
+        
+        # Compute cost for persistence: Distance between track's current CoM and the measurement CoM
+        if event_type == 'persist':
+            state_vector = np.hstack([tracks.state['com'], tracks.state['velocity']])
+        # Compute cost for overlap: Average CoM of merged tracks and distance to measurement CoM
+        elif event_type == 'overlap':
+            # Compute the average center of mass of all nodes in the subset
+            avg_com = sum(track.state['com'] for track in tracks) / len(tracks)
+            avg_vel = sum(track.state['velocity'] for track in tracks) / len(tracks)
+            state_vector = np.hstack([avg_com, avg_vel])
+        # Return a high penalty for unknown event types (optional safeguard)
+        else:
+            raise ValueError(f"Unknown event type: {event_type}") 
+        
+        return self.association_loglikelihood(measurement['com'], state_vector)
+
     def update_state(self, measurement, dt):
         """
         Update the state using the Kalman filter.
@@ -272,7 +301,6 @@ class KalmanModel(StateModel):
         I = np.eye(self.P.shape[0])  # Identity matrix
         self.P = np.dot(I - np.dot(K, self.H), self.P)
 
-
         return {'com': self.state['com'], 'velocity': self.state['velocity'], 'dt':dt}  # Return position and velocity
 
     def transition(self, dt):
@@ -300,7 +328,7 @@ class KalmanModel(StateModel):
         return {'com': self.state['com'], 'velocity': self.state['velocity']}
     
     
-    def association_likelihood(self, z_m, track_state, P_pred):
+    def association_loglikelihood(self, z_m, track_state):
         
         # Predict the measurement for the track
         z_pred = np.dot(self.H, track_state)
@@ -308,19 +336,15 @@ class KalmanModel(StateModel):
         # Compute the innovation (difference between predicted and actual measurement)
         innovation = z_m - z_pred
         
-        # Compute the Mahalanobis distance (using P_pred for covariance)
-        S = np.dot(np.dot(self.H, P_pred), self.H.T) + self.R  # Innovation covariance
+        # Compute Gaussian loglikelihood
+        S = np.dot(np.dot(self.H, self.P), self.H.T) + self.R  # Innovation covariance
         inv_S = np.linalg.inv(S)
-        likelihood = np.exp(-0.5 * np.dot(innovation.T, np.dot(inv_S, innovation)))
-        
-        return likelihood
+        loglikelihood = -0.5*(np.dot(innovation.T, np.dot(inv_S, innovation))+
+                              np.log(np.linalg.det(S)) + len(z_m)*np.log(2*np.pi) )
+        return loglikelihood
     
-    def compute_gating_distance(self, measurement):
-        
-        diff = measurement['com'] - self.state['com']
-        return np.dot(diff.T, diff)
-    
-    def compute_hypothesis_cost(self, tracks, measurement, event_type):
+            
+    def compute_hypothesis_cost_euclidean(self, tracks, measurement, event_type):
         """
         Computes the cost associated with a hypothesis based on the event type.
     
@@ -345,10 +369,8 @@ class KalmanModel(StateModel):
         
         # Return a high penalty for unknown event types (optional safeguard)
         else:
-            raise ValueError(f"Unknown event type: {event_type}")
-    
+            raise ValueError(f"Unknown event type: {event_type}")   
      
-# Subclass 3: Example of a constant acceleration model
 class ConstantAccelerationStateModel(StateModel):
     """
     A state model that assumes constant acceleration between measurements.
@@ -393,34 +415,6 @@ class ConstantAccelerationStateModel(StateModel):
         new_state['position'] = new_position
         new_state['velocity'] = new_velocity
         return new_state
-
-def persist_loglikelihood(state_model,measurement,track):
-    """
-    Computes loglikelihood of a measurement being associated with a track
-    
-    Parameters:
-    -----------
-    - state_model
-    - measurement
-    - track
-    """
-    
-    loglikelihood = 1
-    
-    return loglikelihood
-
-def death_loglikelihood(state_model,measurement,track):
-    """
-    Computes loglikelihood of a track dying
-    
-    Parameters:
-    -----------
-    - state_model
-    - track
-    """
-    loglikelihood = 1
-    
-    return loglikelihood
     
 def euclidean_dist(position1, position2, association_cost=0):
     """

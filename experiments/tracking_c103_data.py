@@ -48,7 +48,7 @@ dataFileSequence = util.getDataFileSequence(dataFile,scanRange)
 # spotInd values to show: 0,1,2,3
 # =============================================================================
 # Spot location
-spotInd = 0
+spotInd = 3
 x = spotData['Xm'][spotInd]
 y = spotData['Ym'][spotInd]
 frm = int(spotData['ome_idxs'][spotInd])
@@ -71,7 +71,7 @@ spot_detector = ThresholdingDetector(threshold=50)
 # spot_detector = HDoGDetector()
 #track_model = BasicModel(initial_state, feature_extractor=BasicFeatureExtractor())
 track_model= KalmanModel(initial_state, feature_extractor= BasicFeatureExtractor(), process_noise=1e-5, measurement_noise=1e-5, dt=1, )
-mht_tracker = MHTTracker(track_model=track_model,n_scan_pruning=3, plot_tree=True)
+mht_tracker = MHTTracker(track_model=track_model,n_scan_pruning=1, plot_tree=True)
 mtt_system = MTTSystem(spot_detector=spot_detector, track_model=track_model, tracker=mht_tracker)
 
 # %%
