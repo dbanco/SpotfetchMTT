@@ -28,7 +28,7 @@ from mtt_system import MTTSystem
 
 
 ###### VD Simulated HEXD data ######
-topPath = r"C:\myDrive\TuftsPhD2022\ProfMillerPhDResearch\ONRProject\VD_sim\VD_sim"
+topPath = r"C:\myDrive"
 dataFile1 = os.path.join(topPath,r"state_*\simulation\outputs\c103_polycrystal_sample_2_state_*_layer_1_output_data.npz")
 dataFile = os.path.join(topPath,r"state_{scan}\simulation\outputs\c103_polycrystal_sample_2_state_{scan}_layer_1_output_data.npz")
 
