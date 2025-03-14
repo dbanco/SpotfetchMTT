@@ -23,10 +23,12 @@ class HypothesisNode:
         Parameters:
         - hypoth_id (int): Unique identifier for the hypothesis node.
         - track_id (set): Set of track IDs.
+        - measurement_id (int): Index of measurement
         - track (StateModel): Track state representation.
         - parents (list of HypothesisNode): List of parent nodes (None for root).
         - event_type (str): "persist", "merge", "split", or "death".
         - cost (float): Cost/log-likelihood for this hypothesis.
+        - best (bool): Indicator that node is part of best global hypothesis 
         """
         self.hypoth_id = hypoth_id  # Unique for each hypothesis
         self.track_id = set(track_id) if isinstance(track_id, (list, tuple, set)) else {track_id}
