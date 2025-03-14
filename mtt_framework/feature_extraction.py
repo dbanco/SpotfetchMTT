@@ -3,10 +3,12 @@
 feature_extraction
 
 Created on Tue Feb 18 16:42:59 2025
-@author: dpqb1
+@author: Bahar, dpqb1
 """
 import numpy as np
 from scipy.ndimage import center_of_mass
+from skimage.measure import perimeter
+from scipy.spatial import ConvexHull
 
 from abc import ABC, abstractmethod
 
@@ -63,6 +65,98 @@ class BasicFeatureExtractor(FeatureExtractor):
             "bbox_center": bbox_center,
             "intensity": compute_intensity(detection.x_masked)# Total intensity
         }
+    
+def compute_area(mask):
+    """
+    Parameters
+    ----------
+    mask : ndarray
+        A binary mask (1 for blob pixels, 0 for background).
+
+    Returns
+    -------
+    area: int
+        The total area (number of the pixels) of the blob
+
+    """
+    return np.sum(mask)
+
+
+def compute_circularity(mask):
+    """
+    Computes the circularity of a BLOB.
+
+    Parameters
+    ----------
+    mask : ndarray
+        Binary mask representing the BLOB.
+
+    Returns
+    -------
+    circularity : float
+        Circularity ratio.
+    """
+    area= compute_area(mask)
+    perimeter_val= perimeter(mask)
+    if area == 0 or perimeter_val == 0:
+        return 0
+    return (perimeter_val ** 2) / (4 * np.pi * area)
+
+
+# Function to compute compactness
+def compute_compactness(mask):
+    """
+    Computes the compactness of the BLOB.
+
+    Parameters
+    ----------
+    mask : ndarray
+        Binary mask representing the BLOB.
+
+    Returns
+    -------
+    compactness : float
+        Compactness ratio (area / bounding box area).
+    """
+    area= compute_area(mask)
+    bbox = find_bounding_box(mask)
+    if bbox is None:
+        return 0
+    tth_min, tth_max, eta_min, eta_max, ome_min, ome_max = bbox
+    bbox_area = (tth_max - tth_min) * (eta_max - eta_min) * (ome_max - ome_min)
+    if bbox_area == 0:
+        return 0
+    return area / bbox_area
+
+
+def com_convex_hull(mask):
+    """
+    Computes the convex hull of the BLOB.
+
+    Parameters
+    ----------
+    mask : ndarray
+        Binary mask representing the BLOB.
+
+    Returns
+    -------
+    convex_hull : list of tuples
+        A list of points (x, y, z) that form the convex hull of the BLOB.
+    """
+    # Extract coordinates of non-zero points in the mask
+    coords = np.array(np.where(mask > 0)).T
+    if coords.shape[0] < 3:
+        return []  # Not enough points to form a hull
+    
+    # Compute the convex hull
+    hull = ConvexHull(coords)
+    #Extract the points that form the convex hull
+    convex_hull_points = coords[hull.vertices]
+    hull_mask = np.zeros_like(mask)
+    hull_mask[tuple(convex_hull_points.T)] = 1 
+    
+    return center_of_mass(hull_mask)
+    
 
 def compute_center_of_mass(x, labels=None, index=None):
     """
@@ -157,7 +251,8 @@ def bbox_features(mask):
     --------
     A dictionary with the following features:
     - 'center': The center of the bounding box in each dimension (tta, eta, ome).
-    - 'size': The size (extent) of the bounding box in each dimension (tta, eta, ome).
+    - 'size': The size (extent) of the bounding box in each dimension (tta, eta, ome)
+    - 'aspect_ratio': The aspect ratio of the bounding box (height/width in eta and tth).
     """
     
     # Find the bounding box
@@ -178,11 +273,20 @@ def bbox_features(mask):
     size_eta = eta_max - eta_min + 1
     size_omega = ome_max - ome_min + 1
     size = [size_tth, size_eta, size_omega]
+    
+    # Calculate aspect ratios for each dimension
+    aspect_ratio_tth = size_tth / max(size_eta, size_omega) if max(size_eta, size_omega) != 0 else None
+    aspect_ratio_eta = size_eta / max(size_tth, size_omega) if max(size_tth, size_omega) != 0 else None
+    aspect_ratio_omega = size_omega / max(size_tth, size_eta) if max(size_tth, size_eta) != 0 else None
+    
+    aspect_ratio= [aspect_ratio_tth, aspect_ratio_eta, aspect_ratio_omega]
+
 
     # Return the features as a dictionary
     return {
         'center': center,
-        'size': size
+        'size': size,
+        'aspect_ratio': aspect_ratio
     }
 
 def compute_intensity(x):
