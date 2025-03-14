@@ -70,7 +70,6 @@ detectors = {
 
 # Tracking results
 results = {}
-
 # Process each detector
 for detector_name, spot_detector in detectors.items():
     results[detector_name] = {}
