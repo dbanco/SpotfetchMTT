@@ -85,8 +85,8 @@ class HypothesisTree:
             
             # Get total cost by adding cost of parents
             parents_cost = 0
-            for parent in parents:
-                parents_cost += parent.cost
+            for node in parents:
+                parents_cost += node.cost
             
             # Create new hypothesis node
             new_node = HypothesisNode(hypoth_id, track_id, measurement_id, track, scan, parents, event_type, cost=cost + parents_cost, best=best)
@@ -167,12 +167,13 @@ class HypothesisTree:
             self.track_id_colors[track_id] = cmap[len(self.track_id_colors) % len(cmap)]
         return self.track_id_colors[track_id]
         
-    def plot_all_tracks(self, data, time_steps, omeRange):
+    def plot_all_tracks(self, data, time_steps, omeRange, vlim):
         """
         Plots all scans and overlays all tracks detected over time.
         """
         fig, axes = plt.subplots(len(omeRange), len(time_steps), 
                                  figsize=(2*len(time_steps), 2*len(omeRange)))
+        
         if len(omeRange) == 1:
             axes = [axes]
         
@@ -180,7 +181,11 @@ class HypothesisTree:
             for i, ome in enumerate(omeRange):
                 slice_data = data[time_step, :, :, ome]
                 ax = axes[i][t_idx] if len(omeRange) > 1 else axes[t_idx]
-                ax.imshow(slice_data, origin='lower', cmap='viridis')
+                if vlim is not None:
+                    vmin, vmax = vlim
+                    ax.imshow(slice_data, origin='lower', cmap='viridis', vmin= vmin, vmax= vmax)
+                else:
+                    ax.imshow(slice_data, origin='lower', cmap='viridis')
                 ax.set_xticks([])
                 ax.set_yticks([])
                 ax.set_xticklabels([])
@@ -207,6 +212,7 @@ class HypothesisTree:
         plt.subplots_adjust(wspace=0, hspace=0)
         plt.show()
 
+    
 class MHTTracker:
     """Multiple Hypothesis Tracker for 3D spot tracking."""
  
@@ -791,7 +797,6 @@ def hierarchy_layout1(G, root=None, level_gap=1.5, min_spacing=2.0):
     assign_x_positions(root)
 
     return pos
-
 
 
 

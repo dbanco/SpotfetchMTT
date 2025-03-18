@@ -7,11 +7,10 @@ spot_detection
 @author: dpqb1
 """
 import numpy as np
-from abc import ABC, abstractmethod
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, median_filter
 from scipy.ndimage import label
-from skimage.feature import hessian_matrix
-# import peaknet
+from skimage.feature import hessian_matrix, hessian_matrix_eigvals, blob_log
+from abc import ABC, abstractmethod
 
 class Detection:
     def __init__(self, blob_label, mask, x_masked):
@@ -72,17 +71,46 @@ class HDoGDetector(DetectorBase):
         - Masked data where each blob is labeled with integer >= 1
         """
         return detectBlobHDoG(data,self.sigmas,self.dsigmas,self.use_gaussian_derivatives)
+    
+class HDoGDetector_SKImage(DetectorBase):
+    """
+    A Hessian-based Difference-of-Gaussian spot detector using skimage library.
+    """
+    def __init__(self, sigmas=np.array([2,2,2]), dsigmas=np.array([1.5,1.5,1.5])):
+        """
+        Initialize the detector with scale parameters and derivative flag.
+        """
+        super().__init__(sigmas=sigmas, 
+                         dsigmas=dsigmas)  # Store in base class dictionary
+        
+        self.sigmas = sigmas # Store in subclass
+        self.dsigmas = dsigmas
+        
+    def detect(self, data):
+        """
+        Dummy detection method.
+
+        Parameters:
+        - data: Input data
+
+        Returns:
+        - Masked data where each blob is labeled with integer >= 1
+        """
+        return detectBlobHDoG_Skimage(data,self.sigmas,self.dsigmas)
 
 class ThresholdingDetector(DetectorBase):
     """
     A thresholding spot detector.
     """
-    def __init__(self, threshold=5):
+    def __init__(self, threshold=5, use_gaussian_filter= False, filter_size=3, sigma=1):
         """
         Initialize the detector with threhsold parameter
         """
         super().__init__(threshold=threshold)  # Store in base class dictionary
         self.threshold = threshold # Store in subclass
+        self.use_gaussian_filter = use_gaussian_filter
+        self.filter_size = filter_size
+        self.sigma = sigma
         
     def detect(self, data):
         """
@@ -93,7 +121,14 @@ class ThresholdingDetector(DetectorBase):
         - Masked data where each blob is labeled with integer >= 1
         """
         
-        return thresholdingDetection(data,self.threshold)
+        # Step 1: Noise reduction via Gaussian or Median filtering
+        if self.use_gaussian_filter:
+            filtered_data = gaussian_filter(data, sigma=self.sigma)
+        else:
+            filtered_data = median_filter(data, size=self.filter_size)
+        
+        # Step 2: Apply thresholding and detect blobs
+        return thresholdingDetection(filtered_data, self.threshold)
 
 # class PeakNetDetector(DetectorBase):
 #     def __init__(self):   
@@ -155,7 +190,7 @@ def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
     dog_norm = DoG(data, sigma=sigmas, dsigma=dsigmas)
 
     # 2. Pre-segmentation
-    hess_mat = hessian_matrix(dog_norm,use_gaussian_derivatives=use_gaussian_derivatives)
+    hess_mat = hessian_matrix(dog_norm)
     D1 = np.zeros(hess_mat[0].shape)
     D2 = np.zeros(hess_mat[0].shape)
     D3 = np.zeros(hess_mat[0].shape)
@@ -174,6 +209,46 @@ def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
     posDefIndicator = (D1 > 0) & (D2 > 0) & (D3 > 0)
     blobs, num_blobs = label(posDefIndicator)
     return blobs, num_blobs
+
+def detectBlobHDoG_Skimage(data, sigmas, dsigmas):
+    """
+    Detects blobs using the Hessian-based Difference of Gaussians (DoG) method (skimage-based).
+
+    Parameters:
+    -----------
+    data : ndarray
+        Input 3D data.
+
+    Returns:
+    --------
+    tuple
+        - blobs : ndarray
+            Labeled blob regions.
+        - num_blobs : int
+            Number of blobs detected.
+    """
+    # mht_tracker.tree.next_track_id
+    # 1. Compute normalized DoG using skimage (Gaussian filtering)
+    dog_norm = DoG(data, sigma=sigmas, dsigma=dsigmas)
+
+    # 2. Compute the Hessian matrix using skimage
+    hess_mat = hessian_matrix(dog_norm, sigma=sigmas[0])
+
+    # 3. Compute eigenvalues of the Hessian matrix using skimage
+    eigenvalues = hessian_matrix_eigvals(hess_mat)
+
+    # Extract positive definite regions (blobs)
+    D1 = eigenvalues[0]  # Eigenvalue associated with first principal curvature
+    D2 = eigenvalues[1]  # Eigenvalue associated with second principal curvature
+    D3 = eigenvalues[2]  # Eigenvalue associated with third principal curvature
+    
+    # Find positive definite regions (blobs)
+    posDefIndicator = (D1 > 0) & (D2 > 0) & (D3 > 0)
+    
+    # Label the blobs
+    blobs, num_blobs = label(posDefIndicator)
+    return blobs, num_blobs
+
 
 def DoG(x, sigma, dsigma, gamma=2):
     """
@@ -198,5 +273,6 @@ def DoG(x, sigma, dsigma, gamma=2):
     g1 = gaussian_filter(x, sigma=sigma)
     g2 = gaussian_filter(x, sigma=sigma + dsigma)
     return sigma[0]**(gamma-1)*(g2 - g1) / (np.mean(sigma) * np.mean(dsigma))
+
 
 
