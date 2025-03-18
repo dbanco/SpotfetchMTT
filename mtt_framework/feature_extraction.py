@@ -7,8 +7,9 @@ Created on Tue Feb 18 16:42:59 2025
 """
 import numpy as np
 from scipy.ndimage import center_of_mass
-
+from sklearn.decomposition import PCA
 from abc import ABC, abstractmethod
+import matplotlib.pyplot as plt
 
 class FeatureExtractor(ABC):
     """
@@ -54,14 +55,18 @@ class BasicFeatureExtractor(FeatureExtractor):
         # Extract bbox center and size
         bbox_center = bbox_features_dict['center'] if bbox_features_dict else None
         bbox_size = bbox_features_dict['size'] if bbox_features_dict else None
-        
+        com = compute_center_of_mass(detection.x_masked)
+        principal_axes, variance = compute_principal_components(detection.x_masked,com)
         return {
             "Spot ID": detection.blob_label,
-            "com": compute_center_of_mass(detection.x_masked),   # Center of mass
+            "com": com,
             'bbox': find_bounding_box(detection.mask),
             "bbox_size": bbox_size,
             "bbox_center": bbox_center,
-            "intensity": compute_intensity(detection.x_masked)# Total intensity
+            "intensity": compute_intensity(detection.x_masked),
+            "principal_axes": principal_axes,
+            "variance": variance
+            
         }
 
 def compute_center_of_mass(x, labels=None, index=None):
@@ -294,6 +299,102 @@ def overlap_index(bbox, all_bboxes):
 
     # No overlap found
     return -1  
+
+def compute_principal_components(x, com):
+    """
+    Computes principal components of a 3D intensity distribution,
+    weighting PCA by intensity values.
+
+    Parameters:
+    x   : np.ndarray (3D)  -> The intensity grid.
+    com : np.ndarray (1D)  -> The center of mass, shape (3,).
+
+    Returns:
+    principal_axes  -> 3x3 matrix (rows are eigenvectors)
+    variance        -> 3-element array (squared axis lengths)
+    """
+    # Get coordinates of all nonzero intensity values
+    indices = np.argwhere(x > 0)
+    intensities = x[indices[:, 0], indices[:, 1], indices[:, 2]]  # Extract intensity values
+
+    # Compute intensity-weighted mean shift
+    weighted_mean = np.average(indices, axis=0, weights=intensities)  # Weighted by intensity
+    centered_data = indices - weighted_mean  # Center around intensity-weighted mean
+
+    # Apply PCA with intensity weighting
+    if centered_data.shape[0] > 4:
+        pca = PCA(n_components=3)
+        pca.fit(centered_data) 
+        # Extract principal axes & variance
+        principal_axes = pca.components_  # (3x3 matrix, each row = eigenvector)
+        variance = pca.explained_variance_  # (3,) Eigenvalues = squared axis lengths
+    else:
+        principal_axes = None
+        variance = None
+        
+    return principal_axes, variance
+
+
+def visualize_pca_on_slices(x, com, principal_axes, variances):
+    """
+    Visualizes PCA principal axes projected onto 2D slices of a 3D intensity grid.
+    
+    Parameters:
+    x               : np.ndarray (3D)  -> Intensity grid.
+    com             : np.ndarray (1D)  -> Center of mass, shape (3,).
+    principal_axes  : np.ndarray (3,3) -> PCA eigenvectors (each row is a principal axis).
+    variances       : np.ndarray (3,)  -> Eigenvalues (squared axis lengths).
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    # Compute axis lengths (sqrt of eigenvalues)
+    axis_lengths = np.sqrt(variances) * 2  # Scale for visualization
+
+    # Define colors for the PCA axes
+    colors = ['r', 'g', 'b']  # PC1 = Red, PC2 = Green, PC3 = Blue
+
+    # ✅ 1. XY Plane (Fix Z)
+    z_idx = int(com[2])  # Middle slice in Z
+    axes[0].imshow(x[:, :, z_idx].T, origin="lower", cmap="gray", aspect="auto")
+    axes[0].set_title(f"XY Slice (Z = {z_idx})")
+
+    for i in range(3):
+        axes[0].arrow(com[0], com[1], 
+                      axis_lengths[i] * principal_axes[i, 0], 
+                      axis_lengths[i] * principal_axes[i, 1], 
+                      color=colors[i], head_width=1)
+
+    # ✅ 2. XZ Plane (Fix Y)
+    y_idx = int(com[1])
+    axes[1].imshow(x[:, y_idx, :].T, origin="lower", cmap="gray", aspect="auto")
+    axes[1].set_title(f"XZ Slice (Y = {y_idx})")
+
+    for i in range(3):
+        axes[1].arrow(com[0], com[2], 
+                      axis_lengths[i] * principal_axes[i, 0], 
+                      axis_lengths[i] * principal_axes[i, 2], 
+                      color=colors[i], head_width=1)
+
+    # ✅ 3. YZ Plane (Fix X)
+    x_idx = int(com[0])
+    axes[2].imshow(x[x_idx, :, :].T, origin="lower", cmap="gray", aspect="auto")
+    axes[2].set_title(f"YZ Slice (X = {x_idx})")
+
+    for i in range(3):
+        axes[2].arrow(com[1], com[2], 
+                      axis_lengths[i] * principal_axes[i, 1], 
+                      axis_lengths[i] * principal_axes[i, 2], 
+                      color=colors[i], head_width=1)
+
+    # ✅ Formatting
+    for ax in axes:
+        ax.set_xlabel("X" if ax == axes[0] else "Y")
+        ax.set_ylabel("Y" if ax == axes[0] else "Z")
+    
+    plt.tight_layout()
+    plt.show()
+
+
     
     
   
