@@ -167,7 +167,7 @@ class HypothesisTree:
             self.track_id_colors[track_id] = cmap[len(self.track_id_colors) % len(cmap)]
         return self.track_id_colors[track_id]
         
-    def plot_all_tracks(self, data, time_steps, omeRange, vlim):
+    def plot_all_tracks(self, data, time_steps, omeRange, vlim=None):
         """
         Plots all scans and overlays all tracks detected over time.
         """
@@ -315,34 +315,49 @@ class MHTTracker:
         Returns:
         - m2ta_matrix (np.array)
         """
-        self.active_track_ids = set.union(*[node.track_id for node in self.tree.leaf_nodes if node.best])
+        
         self.measurements = measurements
         num_leaf_nodes = len(self.tree.live_leaf_nodes)
         self.m2ta_matrix = np.zeros((len(measurements),num_leaf_nodes))
         self.m2ta_to_hypoth_id = np.zeros(num_leaf_nodes)
+        self.active_track_ids = set()
         
         if cov_matrix is None:
             cov_matrix = np.eye(3)  # Assume identity if not provided
         
         for k, node in enumerate(self.tree.live_leaf_nodes):
+            if node.best:
+                self.active_track_ids = self.active_track_ids | node.track_id
             self.m2ta_to_hypoth_id[k] = node.hypoth_id
             for m, measurement in enumerate(measurements):
                 gating_dist = node.track.compute_gating_distance(measurement)
                 if gating_dist < self.gating_threshold:
-                    self.m2ta_matrix[m,k] = 1
-        
+                    self.m2ta_matrix[m,k] = 1       
         pass
         
     def generate_death_hypotheses(self):
         """
 
         """
-        # Add death hypothesis to all  leaf nodes
-        for node in self.tree.live_leaf_nodes:
-            self.tree.add_node(track=copy.deepcopy(node.track),
-                               scan=self.current_scan, measurement_id=None,
-                               parents=[node], event_type="death", 
-                               cost=self.death_loglikelihood + node.cost)
+        # Add death hypothesis to all  leaf nodes or only to leaf nodes with no association
+        if self.evaluate_death:
+            for node in self.tree.live_leaf_nodes:
+                self.tree.add_node(track=copy.deepcopy(node.track),
+                                   scan=self.current_scan, 
+                                   measurement_id=None,
+                                   parents=[node], 
+                                   event_type="death", 
+                                   cost=self.death_loglikelihood + node.cost)
+        else:
+            unassociated_tracks = np.where(~self.m2ta_matrix.any(axis=0))[0].tolist()
+            for k in unassociated_tracks:
+                node = self.tree.live_leaf_nodes[k]
+                self.tree.add_node(track=copy.deepcopy(node.track),
+                                   scan=self.current_scan, 
+                                   measurement_id=None,
+                                   parents=[node], 
+                                   event_type="death", 
+                                   cost=self.death_loglikelihood + node.cost)
                 
     def get_associated_leaf_nodes(self, measurement_index):
         """
@@ -442,8 +457,7 @@ class MHTTracker:
         """
         Updates the hypothesis tree by adding new hypotheses to existing leaf nodes only.
         """
-        if self.evaluate_death:
-            self.generate_death_hypotheses()
+        self.generate_death_hypotheses()
         # split_hypotheses = self.generate_split_hypotheses(self.measurements, cost_function)
         
         for m_idx, measurement in enumerate(self.measurements):
@@ -453,6 +467,10 @@ class MHTTracker:
             self.generate_overlap_hypotheses(track, associated_leaf_nodes, measurement, m_idx)
             if self.evaluate_birth:
                 self.generate_birth_hypothesis(track,m_idx)
+            else:
+                if np.all(self.m2ta_matrix[m_idx,:] == 0):
+                    self.generate_birth_hypothesis(track,m_idx)
+
             
         #self.generate_split_hypotheses(associated_leaf_nodes, measurements)            
     
@@ -499,8 +517,6 @@ class MHTTracker:
         # Cost vector
         c = np.array([node.cost for node in all_hypotheses])
         
-        
-        
         # Constraint matrix
         A_t = np.zeros((num_tracks, num_hypotheses))
         track_id_to_A = {track_id: index for index, track_id in enumerate(self.active_track_ids)}
@@ -533,31 +549,11 @@ class MHTTracker:
                                             bounds=(0, 1), method='highs')
             
         if result.success:
-            # Create birth and death nodes in the case of unassigned nodes
-            if not self.evaluate_death:
-                unassociated_tracks = np.where(~self.m2ta_matrix.any(axis=0))[0].tolist()
-                for A_index in unassociated_tracks:
-                    self.tree.add_node(track=copy.deepcopy(node.track),
-                                       scan=self.current_scan, 
-                                       measurement_id=None,
-                                       parents=[node], 
-                                       event_type="death", 
-                                       cost=self.death_loglikelihood + node.cost, 
-                                       best=True)
-            if not self.evaluate_birth:
-                unassociated_measurements = np.where(result.slack)[0].tolist()
-                for m_idx in unassociated_measurements:
-                    track = self.initialize_track(self.measurements[m_idx])
-                    self.tree.add_node(track=copy.deepcopy(track), 
-                                       scan = self.current_scan, 
-                                       measurement_id=m_idx, 
-                                       parents=[self.tree.root], 
-                                       event_type="birth", 
-                                       cost=self.birth_loglikelihood,
-                                       best=True)
-            
-            # Assemble slected hypotheses
+            # Assemble selected hypotheses
             selected_hypotheses = [all_hypotheses[i] for i in range(num_hypotheses) if result.x[i] > 0.5]
+            for node in self.tree.leaf_nodes:
+                if node.event_type in ['birth','death']:
+                    selected_hypotheses.append(node)
             return selected_hypotheses, result['ineqlin']['residual']
         else:
             raise ValueError("No valid hypothesis selection found")
