@@ -213,7 +213,10 @@ class MHTTracker:
     def __init__(self, track_model, gating_threshold=25.0,
                  death_loglikelihood=-100,
                  birth_loglikelihood=-100,
-                 n_scan_pruning=4, 
+                 n_scan_pruning=4,
+                 evaluate_birth=False,
+                 evaluate_death=False,
+                 birth_death_pruning=False,
                  plot_tree=False):
         """
         Initialize the tracker.
@@ -229,6 +232,9 @@ class MHTTracker:
         self.death_loglikelihood = death_loglikelihood
         self.birth_loglikelihood = birth_loglikelihood
         self.n_scan_pruning = n_scan_pruning
+        self.evaluate_birth = evaluate_birth
+        self.evaluate_death = evaluate_death
+        self.birth_death_pruning = birth_death_pruning
         self.plot_tree= plot_tree
         pass
     
@@ -320,42 +326,7 @@ class MHTTracker:
                     self.m2ta_matrix[m,k] = 1
         
         pass
-
-
-    def remove_unassociated_nodes_old(self):
-        """
-        Removes hypothesis nodes that do not have any association and
-        assigns a "death" hypothesis to parent nodes that lose all children.
-        Additionally, ensures that unassociated nodes labeled as 'best' 
-        receive a death hypothesis instead of removal.
-        """
-        # Identify columns with no associations (i.e., all zeros)
-        unassociated_cols = np.where(~self.m2ta_matrix.any(axis=0))[0]
         
-        # Retrieve the corresponding hypothesis nodes
-        unassociated_nodes = [self.tree.nodes[self.m2ta_to_hypoth_id[k]] for k in unassociated_cols]
-    
-        # Recursive removal function
-        def recursive_remove(node):
-            parents = node.parents.copy()  # Copy to avoid modification during iteration
-            del self.tree.nodes[node.hypoth_id]
-    
-            for parent in parents:
-                parent.children.remove(node)
-                if not parent.children and parent is not self.tree.root:
-                    recursive_remove(parent) 
-        
-        # Remove unassociated nodes that are not labeled as best
-        for node in unassociated_nodes:
-            if node.best:  
-                # If the node is labeled best, assign it a death hypothesis
-                self.tree.add_node(track=copy.deepcopy(node.track),
-                                   scan=self.current_scan, measurement_id=None,
-                                   parents=[node], event_type="death", 
-                                   cost=0, best=True)  # Keep the 'best' label
-            else:
-                recursive_remove(node)
-                
     def generate_death_hypotheses(self):
         """
 
@@ -465,7 +436,8 @@ class MHTTracker:
         """
         Updates the hypothesis tree by adding new hypotheses to existing leaf nodes only.
         """
-        self.generate_death_hypotheses()
+        if self.evaluate_death:
+            self.generate_death_hypotheses()
         # split_hypotheses = self.generate_split_hypotheses(self.measurements, cost_function)
         
         for m_idx, measurement in enumerate(self.measurements):
@@ -473,10 +445,10 @@ class MHTTracker:
             associated_leaf_nodes = self.get_associated_leaf_nodes(m_idx)
             self.generate_persist_hypotheses(track, associated_leaf_nodes, measurement, m_idx)
             self.generate_overlap_hypotheses(track, associated_leaf_nodes, measurement, m_idx)
-            self.generate_birth_hypothesis(track,m_idx)
+            if self.evaluate_birth:
+                self.generate_birth_hypothesis(track,m_idx)
             
-        #self.generate_split_hypotheses(associated_leaf_nodes, measurements)
-            # THE LOGIC RELATING TO BIRTHS AND DEATHS NEEDS TO BE FIXED               
+        #self.generate_split_hypotheses(associated_leaf_nodes, measurements)            
     
         self.tree.update_leaf_nodes()
         self.tree.update_live_leaf_nodes()
@@ -484,7 +456,7 @@ class MHTTracker:
     def evaluate_hypotheses(self):
         """
         Evaluates the hypotheses to determine the best global hypothesis.
-        - Calls `setup_integer_program` to solve for optimal hypotheses.
+        - Calls `solve_integer_program` to solve for optimal hypotheses.
         - Marks the selected nodes and propagates the selection to their parents.
         - Resets all other nodes to best=False before marking the best path.
         """
@@ -496,7 +468,7 @@ class MHTTracker:
             node.best = False
         
         # Get the optimal set of hypotheses
-        best_hypotheses, unassigned_measurements = self.setup_integer_program()
+        best_hypotheses, unassigned_measurements = self.solve_integer_program()
                 
         # Mark selected nodes and propagate to parents
         def propagate_best(node):
@@ -509,7 +481,7 @@ class MHTTracker:
         for node in best_hypotheses:
             propagate_best(node)
            
-    def setup_integer_program(self):
+    def solve_integer_program(self):
         """
         Sets up the integer programming problem to find the best global hypothesis.
         """
@@ -521,7 +493,7 @@ class MHTTracker:
         # Cost vector
         c = np.array([node.cost for node in all_hypotheses])
         
-        b = np.ones(num_tracks + num_measurements)
+        
         
         # Constraint matrix
         A_t = np.zeros((num_tracks, num_hypotheses))
@@ -537,14 +509,48 @@ class MHTTracker:
             if node.event_type != 'death':
                 A_m[node.measurement_id, j] = 1
 
-        # Form equality constraint
-        A=np.concatenate((A_t,A_m))
-        
-        # Solve integer linear program
-        result = scipy.optimize.linprog(-c, A_eq=A, b_eq=b,
-                                        bounds=(0, 1), method='highs')
-        
+        if self.evaluate_birth:
+            # Form equality constraint
+            A=np.concatenate((A_t,A_m))
+            b = np.ones(num_tracks + num_measurements)
+            
+            # Solve integer linear program
+            result = scipy.optimize.linprog(-c, A_eq=A, b_eq=b,
+                                            bounds=(0, 1), method='highs')
+        else:
+            b_t = np.ones(num_tracks)
+            b_m = np.ones(num_measurements)
+            
+            # Solve integer linear program
+            result = scipy.optimize.linprog(-c, A_eq=A_t, b_eq=b_t, 
+                                            A_ub=A_m, b_ub=b_m,
+                                            bounds=(0, 1), method='highs')
+            
         if result.success:
+            # Create birth and death nodes in the case of unassigned nodes
+            if not self.evaluate_death:
+                unassociated_tracks = np.where(~self.m2ta_matrix.any(axis=0))[0].tolist()
+                for A_index in unassociated_tracks:
+                    self.tree.add_node(track=copy.deepcopy(node.track),
+                                       scan=self.current_scan, 
+                                       measurement_id=None,
+                                       parents=[node], 
+                                       event_type="death", 
+                                       cost=self.death_loglikelihood + node.cost, 
+                                       best=True)
+            if not self.evaluate_birth:
+                unassociated_measurements = np.where(result.slack)[0].tolist()
+                for m_idx in unassociated_measurements:
+                    track = self.initialize_track(self.measurements[m_idx])
+                    self.tree.add_node(track=copy.deepcopy(track), 
+                                       scan = self.current_scan, 
+                                       measurement_id=m_idx, 
+                                       parents=[self.tree.root], 
+                                       event_type="birth", 
+                                       cost=self.birth_loglikelihood,
+                                       best=True)
+            
+            # Assemble slected hypotheses
             selected_hypotheses = [all_hypotheses[i] for i in range(num_hypotheses) if result.x[i] > 0.5]
             return selected_hypotheses, result['ineqlin']['residual']
         else:
@@ -597,25 +603,40 @@ class MHTTracker:
     
     def pruning(self):
         """
-        Prunes the hypothesis tree by removing non-best nodes that are at least N scans away from the most recent best hypothesis.
+        Prunes the hypothesis tree by removing non-best nodes that are at least 
+        N scans away from the most recent best hypothesis.
         """
-        def recursive_delete(node):
-            for child in list(node.children):  # Use list to avoid modifying set during iteration
-                recursive_delete(child)
+    
+        def delete_node(node):
+            """Deletes a node and updates parent-child relationships."""
             if node.hypoth_id in self.tree.nodes:
                 del self.tree.nodes[node.hypoth_id]
             for parent in node.parents:
-                parent.children.remove(node)  # Ensure parent references are updated        
+                parent.children.remove(node)  # Use `discard()` to avoid KeyErrors
+    
+        def recursive_delete(node):
+            """Recursively deletes child nodes before deleting the parent."""
+            for child in list(node.children):  # Make a copy to avoid modification issues
+                recursive_delete(child)
+            delete_node(node)
+            
+        # Optionally prune birth and death leaves
+        if self.birth_death_pruning:
+            to_delete = [node for node in self.tree.leaf_nodes if node.event_type in {'birth', 'death'}]
+            for node in to_delete:
+                delete_node(node)
+    
+        # Collect nodes that should be deleted
+        nodes_to_delete = []
+        for node in list(self.tree.nodes.values()):  # Copy values to prevent iteration issues
+            if not node.best and (self.current_scan - node.scan) >= self.n_scan_pruning:
+                nodes_to_delete.append(node)
+    
+        # Perform the deletion safely
+        for node in nodes_to_delete:
+            recursive_delete(node)
 
-        # Traverse upward to find all best nodes within N scans, stop at root
-        done = False
-        while not done:
-            for node in self.tree.nodes.values():
-                done = True
-                if not node.best and (self.current_scan - node.scan) >= self.n_scan_pruning:
-                    recursive_delete(node)
-                    done = False
-                    break
+                    
 
         self.tree.update_leaf_nodes()
         self.tree.update_live_leaf_nodes()
