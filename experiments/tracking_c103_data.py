@@ -40,7 +40,7 @@ params = {}
 params['detector'] = 'eiger'
 params['imSize'] = (5000,5000)
 params['yamlFile'] = os.path.join(topPath,"eiger16M_monolith_mruby_062224_FINAL.yml")
-params['roiSize'] = [30,30,11]
+params['roiSize'] = [35,35,11]
 
 dataFileSequence = util.getDataFileSequence(dataFile,scanRange)   
 
@@ -48,7 +48,7 @@ dataFileSequence = util.getDataFileSequence(dataFile,scanRange)
 # spotInd values to show: 0,1,2,3
 # =============================================================================
 # Spot location
-spotInd = 0
+spotInd = 1
 x = spotData['Xm'][spotInd]
 y = spotData['Ym'][spotInd]
 frm = int(spotData['ome_idxs'][spotInd])
@@ -96,6 +96,6 @@ for scan, fname in enumerate(dataFileSequence):
 # =============================================================================
 scanRange = np.arange(len(dataFileSequence))
 omeRange = np.arange(11)
-mht_tracker.tree.plot_all_tracks(full_data,scanRange,omeRange)
+mht_tracker.tree.plot_all_tracks(full_data,scanRange,omeRange,vlim=[0,200])
 
 

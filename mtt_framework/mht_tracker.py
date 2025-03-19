@@ -77,8 +77,11 @@ class HypothesisTree:
             self.root = new_node
         else:
             if event_type == "birth":
-                track_id = {self.next_track_id}
-                self.next_track_id += 1
+                if best == True:
+                    track_id = set([self.next_track_id])
+                    self.next_track_id += 1
+                else:    
+                    track_id = set()
             else:
                 # Merge track IDs from all parent nodes
                 track_id = set.union(*[parent.track_id for parent in parents])
@@ -220,9 +223,9 @@ class MHTTracker:
                  death_loglikelihood=-100,
                  birth_loglikelihood=-100,
                  n_scan_pruning=4,
-                 evaluate_birth=False,
-                 evaluate_death=False,
-                 birth_death_pruning=False,
+                 evaluate_birth=True,
+                 evaluate_death=True,
+                 birth_death_pruning=True,
                  plot_tree=False):
         """
         Initialize the tracker.
@@ -238,16 +241,14 @@ class MHTTracker:
         self.death_loglikelihood = death_loglikelihood
         self.birth_loglikelihood = birth_loglikelihood
         self.n_scan_pruning = n_scan_pruning
-        self.evaluate_birth = evaluate_birth
-        self.evaluate_death = evaluate_death
         self.birth_death_pruning = birth_death_pruning
         self.plot_tree= plot_tree
         pass
     
     def process_measurements(self,measurements,scan):
-        # 0. Initialize tracker if it is scan 0
+        # 0. Initialize tracker if we do not have a tree yet
         self.current_scan = scan
-        if self.current_scan == 0:
+        if not hasattr(self,"tree") or self.tree.root == None:
             self.initialize_hypothesis_tree(measurements)
             self.prediction()
             if self.plot_tree:
@@ -290,20 +291,22 @@ class MHTTracker:
         self.tree = HypothesisTree()
         
         # Create a dummy root node (track_id=-1, no meaningful state)
-        self.tree.add_node(track=self.track_model,scan=-1,measurement_id=-1)  # Dummy root
+        self.tree.add_node(track=self.track_model,scan=self.current_scan-1,measurement_id=-1)  # Dummy root
         
         # Add each measurement as a child of the root
+        # print(f'Measurement: {measurements}')
         for i,measurement in enumerate(measurements):
             track = self.initialize_track(measurement)
-            self.tree.add_node(track=track, scan=0, measurement_id=i, event_type="birth", parents=[self.tree.root], cost=0, best=True)
+            self.tree.add_node(track=track, scan=self.current_scan, measurement_id=i, event_type="birth", parents=[self.tree.root], cost=0, best=True)
             
         # Update leaf nodes
         self.tree.update_leaf_nodes()
         self.tree.update_live_leaf_nodes()
     
     def prediction(self):
+        # print(f'leaf nodes: {[node.hypoth_id for node in self.tree.live_leaf_nodes]}')
         for node in self.tree.live_leaf_nodes:
-                node.track.transition(self.dt)
+            node.track.transition(self.dt)
 
     def gating(self, measurements, cov_matrix=None):
         """
@@ -340,25 +343,14 @@ class MHTTracker:
 
         """
         # Add death hypothesis to all  leaf nodes or only to leaf nodes with no association
-        if self.evaluate_death:
-            for node in self.tree.live_leaf_nodes:
-                self.tree.add_node(track=copy.deepcopy(node.track),
-                                   scan=self.current_scan, 
-                                   measurement_id=None,
-                                   parents=[node], 
-                                   event_type="death", 
-                                   cost=self.death_loglikelihood + node.cost)
-        else:
-            unassociated_tracks = np.where(~self.m2ta_matrix.any(axis=0))[0].tolist()
-            for k in unassociated_tracks:
-                node = self.tree.live_leaf_nodes[k]
-                self.tree.add_node(track=copy.deepcopy(node.track),
-                                   scan=self.current_scan, 
-                                   measurement_id=None,
-                                   parents=[node], 
-                                   event_type="death", 
-                                   cost=self.death_loglikelihood + node.cost)
-                
+        for node in self.tree.live_leaf_nodes:
+            self.tree.add_node(track=copy.deepcopy(node.track),
+                               scan=self.current_scan, 
+                               measurement_id=None,
+                               parents=[node], 
+                               event_type="death", 
+                               cost=self.death_loglikelihood + node.cost)
+
     def get_associated_leaf_nodes(self, measurement_index):
         """
         Finds the leaf nodes in the hypothesis tree that are associated with a given measurement.
@@ -465,11 +457,8 @@ class MHTTracker:
             associated_leaf_nodes = self.get_associated_leaf_nodes(m_idx)
             self.generate_persist_hypotheses(track, associated_leaf_nodes, measurement, m_idx)
             self.generate_overlap_hypotheses(track, associated_leaf_nodes, measurement, m_idx)
-            if self.evaluate_birth:
-                self.generate_birth_hypothesis(track,m_idx)
-            else:
-                if np.all(self.m2ta_matrix[m_idx,:] == 0):
-                    self.generate_birth_hypothesis(track,m_idx)
+            self.generate_birth_hypothesis(track,m_idx)
+
 
             
         #self.generate_split_hypotheses(associated_leaf_nodes, measurements)            
@@ -501,8 +490,11 @@ class MHTTracker:
                 for parent in node.parents:
                     propagate_best(parent)
         
-        # Call recursively on all best hypotheses
+        # Call recursively on all best hypotheses and assign track_id to births
         for node in best_hypotheses:
+            if node.event_type == 'birth':
+                node.track_id = set([self.tree.next_track_id])
+                self.tree.next_track_id += 1
             propagate_best(node)
            
     def solve_integer_program(self):
@@ -531,29 +523,16 @@ class MHTTracker:
             if node.event_type != 'death':
                 A_m[node.measurement_id, j] = 1
 
-        if self.evaluate_birth:
-            # Form equality constraint
-            A=np.concatenate((A_t,A_m))
-            b = np.ones(num_tracks + num_measurements)
-            
-            # Solve integer linear program
-            result = scipy.optimize.linprog(-c, A_eq=A, b_eq=b,
-                                            bounds=(0, 1), method='highs')
-        else:
-            b_t = np.ones(num_tracks)
-            b_m = np.ones(num_measurements)
-            
-            # Solve integer linear program
-            result = scipy.optimize.linprog(-c, A_eq=A_t, b_eq=b_t, 
-                                            A_ub=A_m, b_ub=b_m,
-                                            bounds=(0, 1), method='highs')
-            
+        # Form equality constraint
+        A=np.concatenate((A_t,A_m))
+        b = np.ones(num_tracks + num_measurements)
+        
+        # Solve integer linear program
+        result = scipy.optimize.linprog(-c, A_eq=A, b_eq=b,
+                                        bounds=(0, 1), method='highs')
         if result.success:
             # Assemble selected hypotheses
             selected_hypotheses = [all_hypotheses[i] for i in range(num_hypotheses) if result.x[i] > 0.5]
-            for node in self.tree.leaf_nodes:
-                if node.event_type in ['birth','death']:
-                    selected_hypotheses.append(node)
             return selected_hypotheses, result['ineqlin']['residual']
         else:
             raise ValueError("No valid hypothesis selection found")
@@ -622,13 +601,14 @@ class MHTTracker:
                 recursive_delete(child)
             delete_node(node)
             
-        # Optionally prune birth and death leaves
+        # Birth and death pruning of hypotheses that were not selected
         if self.birth_death_pruning:
-            to_delete = [node for node in self.tree.leaf_nodes if node.event_type in {'birth', 'death'}]
+            to_delete = [node for node in self.tree.leaf_nodes
+                         if node.event_type in {'birth', 'death'} and not node.best]
             for node in to_delete:
                 delete_node(node)
     
-        # Collect nodes that should be deleted
+        # N-scan pruning
         nodes_to_delete = []
         for node in list(self.tree.nodes.values()):  # Copy values to prevent iteration issues
             if not node.best and (self.current_scan - node.scan) >= self.n_scan_pruning:
