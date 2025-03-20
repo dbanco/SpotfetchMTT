@@ -188,40 +188,6 @@ class ThresholdingDetector(DetectorBase):
         # Step 2: Apply thresholding and detect blobs
         return thresholdingDetection(filtered_data, self.threshold)
     
-    
-class ThresholdingDetector_2(DetectorBase):
-    """
-    A thresholding spot detector.
-    """
-    def __init__(self, threshold=5, use_gaussian_filter= False, filter_size=3, sigma=1):
-        """
-        Initialize the detector with threhsold parameter
-        """
-        super().__init__(threshold=threshold)  # Store in base class dictionary
-        self.threshold = threshold # Store in subclass
-        self.use_gaussian_filter = use_gaussian_filter
-        self.filter_size = filter_size
-        self.sigma = sigma
-        
-    def detect(self, data):
-        """
-        Dummy detection method.
-
-        Parameters:
-        - data: Input data
-
-        Returns:
-        - Masked data where each blob is labeled with integer >= 1
-        """
-        
-        # Step 1: Noise reduction via Gaussian or Median filtering
-        if self.use_gaussian_filter:
-            filtered_data = gaussian_filter(data, sigma=self.sigma)
-        else:
-            filtered_data = median_filter(data, size=self.filter_size)
-        
-        # Step 2: Apply thresholding and detect blobs
-        return thresholdingDetection_2(filtered_data, self.threshold)
 
 ####################### Functions ##############################
 def thresholdingDetection(data,threshold):
@@ -244,41 +210,6 @@ def thresholdingDetection(data,threshold):
     data[data < threshold] = 0
     blobs, num_blobs = label(data)
     return blobs, num_blobs
-
-
-def thresholdingDetection_2(data, threshold_value):
-    """
-    Threshold multidimensional data and apply connected component labeling.
-
-    Parameters:
-    -----------
-    data : ndarray
-        Input n-dimensional data (can be 3D, 4D, etc.).
-    threshold_value : float
-        The threshold value to identify regions of interest.
-
-    Returns:
-    --------
-    tuple
-        - blobs : ndarray
-            Labeled blob regions (same dimensionality as input data).
-        - num_blobs : int
-            Number of blobs detected.
-    """
-    # Threshold the data: set values greater than threshold to True
-    thresholded = data > threshold_value
-    
-    # Label the blobs (connected components) in the thresholded image
-    labeled_image = measure.label(thresholded)
-    
-    # Calculate blob properties (like bounding box, area, etc.)
-    blob_props = measure.regionprops(labeled_image)
-
-    # Get the number of blobs
-    num_blobs = len(blob_props)
-
-    return labeled_image, num_blobs, blob_props
-
 
 def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
     """
