@@ -65,7 +65,7 @@ class BasicFeatureExtractor(FeatureExtractor):
             'bbox': find_bounding_box(detection.mask),
             "bbox_size": bbox_size,
             "bbox_center": bbox_center,
-            "avg_intensity":compute_avg_intensity(detection.x_masked) #Average intensity
+            "avg_intensity":compute_avg_intensity(detection.x_masked), #Average intensity
             "intensity": compute_intensity(detection.x_masked),
             "principal_axes": principal_axes,
             "variance": variance

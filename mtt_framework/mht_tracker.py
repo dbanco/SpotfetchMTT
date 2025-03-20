@@ -258,7 +258,7 @@ class MHTTracker:
         else:
             
             # 1. Filter measurements based on average intensity
-            self.filter_measurments(measurements)
+            self.filter_measurements(measurements)
             
             # 1. Gating
             self.gating(measurements)
