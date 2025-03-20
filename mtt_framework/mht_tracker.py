@@ -5,7 +5,7 @@ mht_tracker
 
 
 Created on Tue Feb 18 16:46:03 2025
-@author: dpqb1
+@author: Daniel, Bahar
 """
 import numpy as np
 import scipy
@@ -219,7 +219,9 @@ class HypothesisTree:
 class MHTTracker:
     """Multiple Hypothesis Tracker for 3D spot tracking."""
  
-    def __init__(self, track_model, gating_threshold=25.0,
+    def __init__(self, track_model, 
+                 intensity_threshold=0,
+                 gating_threshold=25,
                  death_loglikelihood=-100,
                  birth_loglikelihood=-100,
                  n_scan_pruning=4,
@@ -235,6 +237,7 @@ class MHTTracker:
         self.dt=1
         self.current_scan = 0
         self.track_model = track_model
+        self.intensity_threshold = intensity_threshold
         self.gating_threshold = gating_threshold
         self.death_loglikelihood = death_loglikelihood
         self.birth_loglikelihood = birth_loglikelihood
@@ -253,6 +256,10 @@ class MHTTracker:
                 if self.plot_tree:
                     self.tree.visualize_hypothesis_tree()
         else:
+            
+            # 1. Filter measurements based on average intensity
+            self.filter_measurments(measurements)
+            
             # 1. Gating
             self.gating(measurements)
             
@@ -306,6 +313,16 @@ class MHTTracker:
         # print(f'leaf nodes: {[node.hypoth_id for node in self.tree.live_leaf_nodes]}')
         for node in self.tree.live_leaf_nodes:
             node.track.transition(self.dt)
+
+    def filter_measurements(self, measurements):
+        """
+        Parameters:
+        - measurements (list of measurements)
+        - intensity_threshold : float
+        Returns:
+        - filtered_measurements
+        """
+        self.measurements = [m for m in measurements if m["avg_intensity"] >= self.intensity_threshold]
 
     def gating(self, measurements, cov_matrix=None):
         """
