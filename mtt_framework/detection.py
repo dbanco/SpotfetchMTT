@@ -11,6 +11,7 @@ from scipy.ndimage import gaussian_filter, median_filter
 from scipy.ndimage import label
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals, blob_log
 from abc import ABC, abstractmethod
+from skimage import measure, feature, color
 
 class Detection:
     def __init__(self, blob_label, mask, x_masked):
@@ -46,7 +47,33 @@ class DetectorBase(ABC):
         """
         pass
 
+class HDoGDetector_2D(DetectorBase):
+    """
+    A Hessian-based Difference-of-Gaussian spot detector.
+    """
+    def __init__(self, sigmas=np.array([2,2]), dsigmas=np.array([1.5,1.5]), use_gaussian_derivatives=False):
+        """
+        Initialize the detector with scale parameters and derivative flag.
+        """
+        super().__init__(sigmas=sigmas, 
+                         dsigmas=dsigmas,
+                         use_gaussian_derivatives=use_gaussian_derivatives)  # Store in base class dictionary
+        self.sigmas = sigmas # Store in subclass
+        self.dsigmas = dsigmas
+        self.use_gaussian_derivatives = use_gaussian_derivatives
+        
+    def detect(self, data):
+        """
+        Dummy detection method.
 
+        Parameters:
+        - data: Input data
+
+        Returns:
+        - Masked data where each blob is labeled with integer >= 1
+        """
+        return detectBlobHDoG_2D(data,self.sigmas,self.dsigmas,self.use_gaussian_derivatives)
+    
 class HDoGDetector(DetectorBase):
     """
     A Hessian-based Difference-of-Gaussian spot detector.
@@ -71,6 +98,33 @@ class HDoGDetector(DetectorBase):
         - Masked data where each blob is labeled with integer >= 1
         """
         return detectBlobHDoG(data,self.sigmas,self.dsigmas,self.use_gaussian_derivatives)
+   
+class HDoGDetector_SKImmage_2D(DetectorBase):
+    """
+    A Hessian-based Difference-of-Gaussian spot detector.
+    """
+    def __init__(self, sigmas=np.array([2,2]), dsigmas=np.array([1.5,1.5]), use_gaussian_derivatives=False):
+        """
+        Initialize the detector with scale parameters and derivative flag.
+        """
+        super().__init__(sigmas=sigmas, 
+                         dsigmas=dsigmas,
+                         use_gaussian_derivatives=use_gaussian_derivatives)  # Store in base class dictionary
+        self.sigmas = sigmas # Store in subclass
+        self.dsigmas = dsigmas
+        self.use_gaussian_derivatives = use_gaussian_derivatives
+        
+    def detect(self, data):
+        """
+        Dummy detection method.
+
+        Parameters:
+        - data: Input data
+
+        Returns:
+        - Masked data where each blob is labeled with integer >= 1
+        """
+        return detectBlobHDoG_Skimage_2D(data,self.sigmas,self.dsigmas)
     
 class HDoGDetector_SKImage(DetectorBase):
     """
@@ -129,6 +183,7 @@ class ThresholdingDetector(DetectorBase):
         
         # Step 2: Apply thresholding and detect blobs
         return thresholdingDetection(filtered_data, self.threshold)
+    
 
 # class PeakNetDetector(DetectorBase):
 #     def __init__(self):   
@@ -166,7 +221,6 @@ def thresholdingDetection(data,threshold):
     blobs, num_blobs = label(data)
     return blobs, num_blobs
 
-
 def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
     """
     Detects blobs using the Hessian-based Difference of Gaussians (DoG) method.
@@ -190,7 +244,8 @@ def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
     dog_norm = DoG(data, sigma=sigmas, dsigma=dsigmas)
 
     # 2. Pre-segmentation
-    hess_mat = hessian_matrix(dog_norm)
+    hess_mat = hessian_matrix(dog_norm, sigma=sigmas)
+    
     D1 = np.zeros(hess_mat[0].shape)
     D2 = np.zeros(hess_mat[0].shape)
     D3 = np.zeros(hess_mat[0].shape)
@@ -207,6 +262,47 @@ def detectBlobHDoG(data, sigmas, dsigmas, use_gaussian_derivatives):
                 D3[i1,i2,i3] = np.linalg.det(h_mat)
 
     posDefIndicator = (D1 > 0) & (D2 > 0) & (D3 > 0)
+    blobs, num_blobs = label(posDefIndicator)
+    return blobs, num_blobs
+
+
+def detectBlobHDoG_2D(data, sigmas, dsigmas, use_gaussian_derivatives):
+    """
+    Detects blobs using the Hessian-based Difference of Gaussians (DoG) method.
+
+    Parameters:
+    -----------
+    data : ndarray
+        Input 2D data.
+
+    Returns:
+    --------
+    tuple
+        - blobs : ndarray
+            Labeled blob regions.
+        - num_blobs : int
+            Number of blobs detected.
+        - hess_mat : list of ndarray
+            Hessian matrices of the DoG result.
+    """
+    # 1. Compute normalized DoG
+    dog_norm = DoG(data, sigma=sigmas, dsigma=dsigmas)
+
+    # 2. Pre-segmentation
+    hess_mat = hessian_matrix(dog_norm, sigma=sigmas)
+    D1 = np.zeros(hess_mat[0].shape)
+    D2 = np.zeros(hess_mat[0].shape)
+    for i1 in range(hess_mat[0].shape[0]):
+        for i2 in range(hess_mat[0].shape[1]):
+                h_mat = np.array([
+                    [hess_mat[0][i1, i2], hess_mat[1][i1, i2]],
+                    [hess_mat[1][i1, i2], hess_mat[2][i1, i2]]
+                ])
+                D1[i1,i2] = h_mat[0,0]
+                D2[i1,i2] = np.linalg.det(h_mat[:2,:2])
+                
+
+    posDefIndicator = (D1 > 0) & (D2 > 0) 
     blobs, num_blobs = label(posDefIndicator)
     return blobs, num_blobs
 
@@ -227,12 +323,11 @@ def detectBlobHDoG_Skimage(data, sigmas, dsigmas):
         - num_blobs : int
             Number of blobs detected.
     """
-    # mht_tracker.tree.next_track_id
     # 1. Compute normalized DoG using skimage (Gaussian filtering)
     dog_norm = DoG(data, sigma=sigmas, dsigma=dsigmas)
 
     # 2. Compute the Hessian matrix using skimage
-    hess_mat = hessian_matrix(dog_norm, sigma=sigmas[0])
+    hess_mat = hessian_matrix(dog_norm, sigma=sigmas)
 
     # 3. Compute eigenvalues of the Hessian matrix using skimage
     eigenvalues = hessian_matrix_eigvals(hess_mat)
@@ -244,6 +339,44 @@ def detectBlobHDoG_Skimage(data, sigmas, dsigmas):
     
     # Find positive definite regions (blobs)
     posDefIndicator = (D1 > 0) & (D2 > 0) & (D3 > 0)
+    
+    # Label the blobs
+    blobs, num_blobs = label(posDefIndicator)
+    return blobs, num_blobs
+
+
+def detectBlobHDoG_Skimage_2D(data, sigmas, dsigmas):
+    """
+    Detects blobs using the Hessian-based Difference of Gaussians (DoG) method (skimage-based).
+
+    Parameters:
+    -----------
+    data : ndarray
+        Input 3D data.
+
+    Returns:
+    --------
+    tuple
+        - blobs : ndarray
+            Labeled blob regions.
+        - num_blobs : int
+            Number of blobs detected.
+    """
+    # 1. Compute normalized DoG using skimage (Gaussian filtering)
+    dog_norm = DoG(data, sigma=sigmas, dsigma=dsigmas)
+
+    # 2. Compute the Hessian matrix using skimage
+    hess_mat = hessian_matrix(dog_norm, sigma=sigmas)
+
+    # 3. Compute eigenvalues of the Hessian matrix using skimage
+    eigenvalues = hessian_matrix_eigvals(hess_mat)
+
+    # Extract positive definite regions (blobs)
+    D1 = eigenvalues[0]  # Eigenvalue associated with first principal curvature
+    D2 = eigenvalues[1]  # Eigenvalue associated with second principal curvature
+    
+    # Find positive definite regions (blobs)
+    posDefIndicator = (D1 > 0) & (D2 > 0)
     
     # Label the blobs
     blobs, num_blobs = label(posDefIndicator)
