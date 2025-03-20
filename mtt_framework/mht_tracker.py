@@ -223,8 +223,6 @@ class MHTTracker:
                  death_loglikelihood=-100,
                  birth_loglikelihood=-100,
                  n_scan_pruning=4,
-                 evaluate_birth=True,
-                 evaluate_death=True,
                  birth_death_pruning=True,
                  plot_tree=False):
         """
@@ -246,13 +244,14 @@ class MHTTracker:
         pass
     
     def process_measurements(self,measurements,scan):
-        # 0. Initialize tracker if we do not have a tree yet
+        # 0. Initialize tracker if we do not have a tree yet and we do have measurements
         self.current_scan = scan
         if not hasattr(self,"tree") or self.tree.root == None:
-            self.initialize_hypothesis_tree(measurements)
-            self.prediction()
-            if self.plot_tree:
-                self.tree.visualize_hypothesis_tree()
+            if len(measurements) > 0:
+                self.initialize_hypothesis_tree(measurements)
+                self.prediction()
+                if self.plot_tree:
+                    self.tree.visualize_hypothesis_tree()
         else:
             # 1. Gating
             self.gating(measurements)
@@ -477,20 +476,29 @@ class MHTTracker:
         # should be trivial. Do I need to do this explicitly? Does this integer programming
         # deal well if certain tracks and measurements are clearly independent of one another
         # With deaths and births included, the inequality constraint is now equality
-        for node in self.tree.nodes.values():
-            node.best = False
         
         # Get the optimal set of hypotheses
         best_hypotheses, unassigned_measurements = self.solve_integer_program()
                 
         # Mark selected nodes and propagate to parents
+        def propagate_not_best(node):
+            if isinstance(node, HypothesisNode):
+                node.best = False
+                for parent in node.parents:
+                    propagate_not_best(parent)
+            
         def propagate_best(node):
             if isinstance(node, HypothesisNode):
                 node.best = True
                 for parent in node.parents:
                     propagate_best(parent)
         
-        # Call recursively on all best hypotheses and assign track_id to births
+        # Reset best labels on live tracks ignoring best hypotheses
+        for node in self.tree.live_leaf_nodes:
+            if node not in best_hypotheses:
+                propagate_not_best(node)
+        
+        # Assign best labels on all best hypotheses and assign track_id to births
         for node in best_hypotheses:
             if node.event_type == 'birth':
                 node.track_id = set([self.tree.next_track_id])
