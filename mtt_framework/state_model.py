@@ -296,6 +296,9 @@ class KalmanModel(StateModel):
         self.state['bbox_center']= measurement['bbox_center']
         self.state['bbox_size']= measurement['bbox_size']
         self.state['intensity'] = measurement['intensity']
+        self.state['principal_axes'] = measurement['principal_axes']
+        self.state['variance'] = measurement['variance']
+        
 
         # Covariance update: P_k|k = (I - K * H) * P_k|k-1
         I = np.eye(self.P.shape[0])  # Identity matrix

@@ -91,8 +91,6 @@ class HDoGDetector(DetectorBase):
         
     def detect(self, data):
         """
-        Dummy detection method.
-
         Parameters:
         - data: Input data
 
@@ -170,8 +168,6 @@ class ThresholdingDetector(DetectorBase):
         
     def detect(self, data):
         """
-        Dummy detection method.
-
         Parameters:
         - data: Input data
 
@@ -188,6 +184,20 @@ class ThresholdingDetector(DetectorBase):
         # Step 2: Apply thresholding and detect blobs
         return thresholdingDetection(filtered_data, self.threshold)
     
+
+# class PeakNetDetector(DetectorBase):
+#     def __init__(self):   
+#         path_chkpt = r"C:\Users\dpqb1\peaknet\data\rayonix.2023_0506_0308_15.chkpt"
+#         path_cheetah_geom = r"C:\Users\dpqb1\peaknet\data\cheetah_geom.pickle"
+#         self.peak_finder = peaknet.PeakFinder(path_chkpt = path_chkpt, path_cheetah_geom = path_cheetah_geom)
+#         self.min_num_peaks = 15
+        
+#     def detect(self,data):
+#         peak_list, prediction_map = self.peak_finder.find_peak_w_softmax(data, 
+#                                                            min_num_peaks = self.min_num_peaks, 
+#                                                            uses_geom = False, 
+#                                                            returns_prediction_map = True)
+
 
 ####################### Functions ##############################
 def thresholdingDetection(data,threshold):

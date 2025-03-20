@@ -40,7 +40,7 @@ params = {}
 params['detector'] = 'eiger'
 params['imSize'] = (5000,5000)
 params['yamlFile'] = os.path.join(topPath,"eiger16M_monolith_mruby_062224_FINAL.yml")
-params['roiSize'] = [30,30,11]
+params['roiSize'] = [35,35,11]
 
 dataFileSequence = util.getDataFileSequence(dataFile,scanRange)   
 
@@ -48,7 +48,7 @@ dataFileSequence = util.getDataFileSequence(dataFile,scanRange)
 # spotInd values to show: 0,1,2,3
 # =============================================================================
 # Spot location
-spotInd = 3
+spotInd = 1
 x = spotData['Xm'][spotInd]
 y = spotData['Ym'][spotInd]
 frm = int(spotData['ome_idxs'][spotInd])
@@ -67,11 +67,11 @@ initial_state = {
 }
 
 # Instantiate Detector, Feature Extractor, Track Model
-spot_detector = ThresholdingDetector(threshold=50)
+spot_detector = ThresholdingDetector(threshold=20)
 # spot_detector = HDoGDetector()
 #track_model = BasicModel(initial_state, feature_extractor=BasicFeatureExtractor())
 track_model= KalmanModel(initial_state, feature_extractor= BasicFeatureExtractor(), process_noise=1e-5, measurement_noise=1e-5, dt=1, )
-mht_tracker = MHTTracker(track_model=track_model,n_scan_pruning=1, plot_tree=True)
+mht_tracker = MHTTracker(track_model=track_model,n_scan_pruning=4, plot_tree=True)
 mtt_system = MTTSystem(spot_detector=spot_detector, track_model=track_model, tracker=mht_tracker)
 
 # %%
@@ -82,6 +82,7 @@ mtt_system = MTTSystem(spot_detector=spot_detector, track_model=track_model, tra
 dims = params['roiSize']
 full_data = np.zeros((len(dataFileSequence),dims[0],dims[1],dims[2]))
 for scan, fname in enumerate(dataFileSequence):
+    print(f'Scan {scan}')
     # Load roi
     data = util.loadPolarROI3D(fname,tth,eta,frm,params)
     # Process with tracker
@@ -95,6 +96,6 @@ for scan, fname in enumerate(dataFileSequence):
 # =============================================================================
 scanRange = np.arange(len(dataFileSequence))
 omeRange = np.arange(11)
-mht_tracker.tree.plot_all_tracks(full_data,scanRange,omeRange)
+mht_tracker.tree.plot_all_tracks(full_data,scanRange,omeRange,vlim=[0,200])
 
 

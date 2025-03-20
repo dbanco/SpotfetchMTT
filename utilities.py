@@ -21,6 +21,7 @@ import pandas as pd
 import yaml
 import h5py
 import os
+import time
 import glob
 from hexrd import imageseries
 from hexrd import transforms
@@ -479,7 +480,7 @@ def loadROI(dataPath, scan, frame, etaRoi, tthRoi, params):
 
     return roi
 
-def loadPolarROI(fnames, tth, eta, frame, params):
+def loadPolarROI(fnames, tth, eta, frame, params, interp_params=None):
     """
     Loads the polar ROI for the specified detector type.
 
@@ -509,7 +510,7 @@ def loadPolarROI(fnames, tth, eta, frame, params):
         roi = loadEigerPolarRoi(fnames, tth, eta, frame, params)
     return roi
 
-def loadPolarROI3D(fnames, tth, eta, frame, params):
+def loadPolarROI3D(fnames, tth, eta, frame, params, interp_params=None):
     """
     Loads a 3D polar ROI for the specified detector type.
 
@@ -532,14 +533,14 @@ def loadPolarROI3D(fnames, tth, eta, frame, params):
         Loaded 3D polar ROI.
     """
     if params['detector'] == 'dexela':
-        roi3D = loadDexPolarRoi3D(fnames, tth, eta, frame, params)
+        roi3D = loadDexPolarRoi3D(fnames, tth, eta, frame, params, interp_params)
     elif params['detector'] == 'eiger':
-        roi3D = loadEigerPolarRoi3D(fnames, tth, eta, frame, params)
+        roi3D = loadEigerPolarRoi3D(fnames, tth, eta, frame, params, interp_params)
     elif params['detector'] == 'eiger_sim':
-        roi3D = loadEigerPolarRoi3D(fnames, tth, eta, frame, params)
+        roi3D = loadEigerPolarRoi3D(fnames, tth, eta, frame, params, interp_params)
     return roi3D
 
-def loadDexPolarRoi(fnames, tth, eta, frame, params):
+def loadDexPolarRoi(fnames, tth, eta, frame, params, interp_params=None):
     """
     Loads the polar ROI for the Dexela detector.
 
@@ -570,7 +571,10 @@ def loadDexPolarRoi(fnames, tth, eta, frame, params):
     rad_dom, eta_dom = polarDomain(detectDist, mmPerPixel, tth, eta, roiSize)
 
     # Construct interpolation matrix
-    Ainterp, new_center, x_cart, y_cart = getInterpParamsDexela(tth, eta, params)
+    if interp_params == None:
+        Ainterp, new_center, x_cart, y_cart = getInterpParamsDexela(tth, eta, params)
+    else:
+        Ainterp, new_center, x_cart, y_cart = interp_params
 
     # Load Cartesian ROI pixels
     ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel)
@@ -584,7 +588,7 @@ def loadDexPolarRoi(fnames, tth, eta, frame, params):
 
     return roi_polar
 
-def loadDexPolarRoi3D(fnames, tth, eta, frame, params):
+def loadDexPolarRoi3D(fnames, tth, eta, frame, params, interp_params=None):
     """
     Loads a 3D polar ROI for the Dexela detector.
 
@@ -617,8 +621,11 @@ def loadDexPolarRoi3D(fnames, tth, eta, frame, params):
     rad_dom, eta_dom = polarDomain(detectDist, mmPerPixel, tth, eta, roiSize)
 
     # Construct interpolation matrix
-    Ainterp, new_center, x_cart, y_cart = getInterpParamsDexela(tth, eta, params)
-
+    if interp_params == None:
+        Ainterp, new_center, x_cart, y_cart = getInterpParamsDexela(tth, eta, params)
+    else:
+        Ainterp, new_center, x_cart, y_cart = interp_params
+        
     # Load Cartesian ROI pixels for each frame
     ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel)
     roi3D = np.zeros(roiSize)
@@ -630,7 +637,7 @@ def loadDexPolarRoi3D(fnames, tth, eta, frame, params):
 
     return roi3D
 
-def loadEigerPolarRoi(fname, tth, eta, frame, params):
+def loadEigerPolarRoi(fname, tth, eta, frame, params, interp_params=None):
     """
     Loads a polar region of interest (ROI) for the Eiger detector.
 
@@ -661,8 +668,11 @@ def loadEigerPolarRoi(fname, tth, eta, frame, params):
     rad_dom, eta_dom = polarDomain(detectDist, mmPerPixel, tth, eta, roiSize)
     
     # 2. Construct interpolation matrix
-    Ainterp, new_center, x_cart, y_cart = getInterpParamsEiger(tth, eta, params)
-    
+    if interp_params == None:
+        Ainterp, new_center, x_cart, y_cart = getInterpParamsEiger(tth, eta, params)
+    else:
+        Ainterp, new_center, x_cart, y_cart = interp_params
+        
     # 3. Load needed Cartesian ROI pixels
     ff1_pix = panelPixelsEiger(ff_trans, mmPerPixel, imSize)
     if params['detector'] == 'eiger':
@@ -670,15 +680,18 @@ def loadEigerPolarRoi(fname, tth, eta, frame, params):
     elif params['detector'] == 'eiger_sim':
         roi = loadEigerSimPanelROI(x_cart, y_cart, ff1_pix, fname, frame)
     
+    tic = time.time()
     # 4. Apply interpolation matrix to Cartesian pixels get Polar values
     roi_polar_vec = Ainterp.dot(roi.flatten())
     
     # 5. Reshape and output roi
     roi_polar = np.reshape(roi_polar_vec, (len(rad_dom), len(eta_dom)))
+    toc = time.time()
+    print(toc-tic)
 
     return roi_polar
 
-def loadEigerPolarRoi3D(fname,tth,eta,frame,params):
+def loadEigerPolarRoi3D(fname,tth,eta,frame,params,interp_params=None):
     """
     Loads a 3D polar region of interest (ROI) for the Eiger detector.
 
@@ -712,8 +725,11 @@ def loadEigerPolarRoi3D(fname,tth,eta,frame,params):
     rad_dom, eta_dom = polarDomain(detectDist, mmPerPixel, tth, eta, roiSize)
     
     # 2. Construct interpolation matrix
-    Ainterp,new_center,x_cart,y_cart = getInterpParamsEiger(tth,eta,params)
-    
+    if interp_params == None:
+        Ainterp,new_center,x_cart,y_cart = getInterpParamsEiger(tth,eta,params)
+    else:
+        Ainterp, new_center, x_cart, y_cart = interp_params
+        
     ff1_pix = panelPixelsEiger(ff_trans,mmPerPixel,imSize)
 
     # 3. Load needed Cartesian ROI pixels
@@ -728,7 +744,7 @@ def loadEigerPolarRoi3D(fname,tth,eta,frame,params):
     
     return roi_polar
 
-def loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, frame, params, dexShape=DEX_SHAPE):
+def loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, frame, params, interp_params=None, dexShape=DEX_SHAPE):
     """
     Loads a Region of Interest (ROI) for the Dexela detector in Cartesian coordinates.
 
@@ -1157,7 +1173,16 @@ def bilinearInterpMatrix(roiShape, rad_dom, eta_dom, center, detectDist):
     scipy.sparse.coo_array
         Sparse matrix for bilinear interpolation.
     """
-    Ainterp = np.zeros((len(rad_dom) * len(eta_dom), roiShape[0] * roiShape[1]))
+    
+    out_rows = len(rad_dom)
+    out_cols = len(eta_dom)
+    in_rows = roiShape[0]
+    in_cols = roiShape[1]
+    
+    row_indices = []
+    col_indices = []
+    values = []
+    
     k = 0  # Row index in the interpolation matrix
 
     # Loop through radial and azimuthal domains
@@ -1172,16 +1197,27 @@ def bilinearInterpMatrix(roiShape, rad_dom, eta_dom, center, detectDist):
             x2 = np.ceil(x)
             y1 = np.floor(y)
             y2 = np.ceil(y)
+            
+            dx1 = x - x1
+            dy1 = y - y1
+            dx2 = x2 - x
+            dy2 = y2 - y
 
-            # Populate the interpolation matrix with weights
-            Ainterp[k, int(x2 + y2 * roiShape[1])] = (x - x1) * (y - y1)
-            Ainterp[k, int(x2 + y1 * roiShape[1])] = (x2 - x) * (y - y1)
-            Ainterp[k, int(x1 + y2 * roiShape[1])] = (x - x1) * (y2 - y)
-            Ainterp[k, int(x1 + y1 * roiShape[1])] = (x2 - x) * (y2 - y)
+            # Flattened indices in input image
+            idx00 = y1 * in_cols + x1
+            idx01 = y2 * in_cols + x1
+            idx10 = y1 * in_cols + x2
+            idx11 = y2 * in_cols + x2
+
+            # Store nonzero values
+            row_indices.extend([k] * 4)
+            col_indices.extend([idx00, idx01, idx10, idx11])
+            values.extend([dx1*dy1,dx2*dy1,dx1*dy2,dx2*dy2])
             k += 1
 
-    # Convert to sparse matrix format
-    Ainterp = sp.sparse.coo_array(Ainterp)
+    Ainterp = sp.sparse.csr_array((values, (row_indices, col_indices)), 
+                                  shape=(out_rows*out_cols, in_rows*in_cols))
+    
     return Ainterp
 
 def panelPixelsDex(ff_trans, mmPerPixel, imSize=(4888, 7300), dexShape=DEX_SHAPE):
