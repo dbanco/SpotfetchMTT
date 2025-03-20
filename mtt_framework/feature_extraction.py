@@ -65,10 +65,10 @@ class BasicFeatureExtractor(FeatureExtractor):
             'bbox': find_bounding_box(detection.mask),
             "bbox_size": bbox_size,
             "bbox_center": bbox_center,
+            "avg_intensity":compute_avg_intensity(detection.x_masked) #Average intensity
             "intensity": compute_intensity(detection.x_masked),
             "principal_axes": principal_axes,
             "variance": variance
-            
         }
     
 def compute_area(mask):
@@ -312,6 +312,25 @@ def compute_intensity(x):
     intensity = np.sum(x)
     
     return intensity
+
+def compute_avg_intensity(x):
+    """
+    Calculate the average intensity of the spot
+
+    Parameters
+    ----------
+    x input : ndarray
+        Data from which to calculate total intensity. 
+
+    Returns
+    -------
+    avg_intensity : float
+    The average intensity is computed as the mean of all values in x.
+    """
+    
+    avg_intensity = np.mean(x)
+    
+    return avg_intensity
 
 def compute_velocity(prev_com, curr_com, dt=1):
     """
