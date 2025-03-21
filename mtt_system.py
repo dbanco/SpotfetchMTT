@@ -51,8 +51,13 @@ class MTTSystem:
         # Step 2: Reduce pixel detections to measurements
         measurements = self.track_model.get_measurements(frame,blobs)
         
-        # Step 3: Run tracker
-        self.tracker.process_measurements(measurements, scan)
+        if len(measurements) > 0:
+            # Step 3: Run tracker
+            self.tracker.process_measurements(measurements, scan)
+            return True
+        else:
+            print("No measurements to track")
+            return False  
         
   
 
