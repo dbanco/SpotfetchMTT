@@ -1,0 +1,99 @@
+services:
+  base:
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+    image: tracker-deployment-base  # Name the base image explicitly
+
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    networks:
+      - tracking_net
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: tracker_data
+      POSTGRES_USER: dbanco
+      POSTGRES_PASSWORD: yourpassword
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbanco -d tracker_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:latest
+    container_name: redis_queue
+    networks:
+      - tracking_net
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  tracker:
+    build: ./tracker
+    deploy:
+      replicas: 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tracking_net
+    volumes:
+      - "../mtt_framework:/app/mtt_framework"
+      - "../utilities.py:/app/utilities.py"
+      - "../mtt_system.py:/app/mtt_system.py"
+      - "E:/tracker_states:/tracker_states"
+      - "E:/omega_frames:/omega_frames"
+
+  job_dispatcher:
+    build: ./job_dispatcher
+    container_name: job_dispatcher
+    depends_on:
+      - redis
+    networks:
+      - tracking_net
+    volumes:
+      - "../utilities.py:/app/utilities.py"
+      - "E:/Data/c103_processing:/data"
+
+  omega_listener:
+    build: ./omega_listener
+    container_name: omega_frame_listener
+    depends_on:
+      - redis
+    networks:
+      - tracking_net
+    volumes:
+      - "E:/omega_frames:/omega_frames"
+
+  stats_processor:
+    build: ./stats_processor
+    container_name: stats_processor
+    ports:
+      - "8501:8501"  # Host:Container
+    depends_on:
+      - postgres
+    networks:
+      - tracking_net
+    volumes:
+      - "./stats_processor:/app"
+    stdin_open: true
+    tty: true
+    command: >
+      streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+
+networks:
+  tracking_net:
+  
+volumes:
+  postgres_data:
