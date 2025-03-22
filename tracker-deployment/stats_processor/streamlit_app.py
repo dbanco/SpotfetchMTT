@@ -39,9 +39,13 @@ data = fetch_variance_histogram()
 # First parse JSON strings to lists
 data["var"] = data["var"].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
 # Then compute max variance safely
+data["max_var"] = data["var"].apply(lambda v: max(v) if isinstance(v, list) and len(v) > 0 else None)
+st.write("Columns in DataFrame:", data.columns)
 scan_bins = sorted(data["scan_number"].unique())
-hist_data = [data[data["scan_number"] == scan]["max_var"].values for scan in scan_bins]
+hist_data = [data[data["scan_number"] == scan]["max_var"].dropna().values for scan in scan_bins]
 
+st.write("scan_bins:", scan_bins)
+st.write("hist_data:", hist_data)
 fig, ax = plt.subplots(figsize=(10, 5))
 ax.imshow(np.array([np.histogram(h, bins=20)[0] for h in hist_data]), aspect='auto', origin='lower')
 ax.set_xlabel("Histogram Bin")

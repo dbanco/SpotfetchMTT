@@ -83,9 +83,9 @@ def write_to_database(region_id, track_id, scan_number, state, overlapping, dete
         }
         features = convert_for_json(features)
         
-        print("📦 Feature types before serialization:")
-        for key, value in features.items():
-            print(f"{key}: type = {type(value)}", flush=True)
+        # print("Feature types before serialization:")
+        # for key, value in features.items():
+        #     print(f"{key}: type = {type(value)}", flush=True)
 
         # SQL query to insert/update measurement
         query = """
