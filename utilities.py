@@ -26,7 +26,7 @@ import glob
 from hexrd import imageseries
 from hexrd import transforms
 
-FRAME1 = 2
+FRAME1 = 0
 NUMFRAMES = 1440
 OMEG_RANGE = 360
 DEX_SHAPE = (3888, 3072)
@@ -577,7 +577,7 @@ def loadDexPolarRoi(fnames, tth, eta, frame, params, interp_params=None):
         Ainterp, new_center, x_cart, y_cart = interp_params
 
     # Load Cartesian ROI pixels
-    ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel)
+    ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel,imSize=params['imSize'])
     roi = loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, frame, params)
 
     # Apply interpolation matrix to Cartesian pixels to get polar values
@@ -588,7 +588,7 @@ def loadDexPolarRoi(fnames, tth, eta, frame, params, interp_params=None):
 
     return roi_polar
 
-def loadDexPolarRoi3D(fnames, tth, eta, frame, params, interp_params=None):
+def loadDexPolarRoi3D(fnames, tth, eta, frames, params, interp_params=None):
     """
     Loads a 3D polar ROI for the Dexela detector.
 
@@ -614,9 +614,9 @@ def loadDexPolarRoi3D(fnames, tth, eta, frame, params, interp_params=None):
     yamlFile = params['yamlFile']
     roiSize = params['roiSize']
     detectDist, mmPerPixel, ff_trans, ff_tilt = loadYamlDataDexela(yamlFile, tth, eta)
-    dome = (roiSize[2] - 1) / 2
-    frmRange = wrapFrame(np.arange(frame - dome, frame + dome + 1))
-
+    print(frames)
+    frmRange = np.arange(frames[0], frames[1] + 1)
+    
     # Construct radial and eta domains
     rad_dom, eta_dom = polarDomain(detectDist, mmPerPixel, tth, eta, roiSize)
 
@@ -624,12 +624,17 @@ def loadDexPolarRoi3D(fnames, tth, eta, frame, params, interp_params=None):
     if interp_params == None:
         Ainterp, new_center, x_cart, y_cart = getInterpParamsDexela(tth, eta, params)
     else:
-        Ainterp, new_center, x_cart, y_cart = interp_params
+        Ainterp = interp_params[0]
+        new_center = interp_params[1]
+        x_cart = interp_params[2]
+        y_cart = interp_params[3]
         
     # Load Cartesian ROI pixels for each frame
-    ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel)
+    ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel,imSize=params['imSize'])
     roi3D = np.zeros(roiSize)
+    print(frmRange)
     for i, frm in enumerate(frmRange):
+        print([i,frm])
         roi = loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, int(frm), params)
         roi_polar_vec = Ainterp.dot(roi.flatten())
         roi_polar = np.reshape(roi_polar_vec, roiSize[:2])
@@ -671,7 +676,10 @@ def loadEigerPolarRoi(fname, tth, eta, frame, params, interp_params=None):
     if interp_params == None:
         Ainterp, new_center, x_cart, y_cart = getInterpParamsEiger(tth, eta, params)
     else:
-        Ainterp, new_center, x_cart, y_cart = interp_params
+        Ainterp = interp_params[0]
+        new_center = interp_params[1]
+        x_cart = interp_params[2]
+        y_cart = interp_params[3]
         
     # 3. Load needed Cartesian ROI pixels
     ff1_pix = panelPixelsEiger(ff_trans, mmPerPixel, imSize)
@@ -717,7 +725,7 @@ def loadEigerPolarRoi3D(fname,tth,eta,frame,params,interp_params=None):
     roiSize = params['roiSize']
     imSize = params['imSize']
     dome = (roiSize[2]-1)/2
-    frmRange = wrapFrame(np.arange(frame-dome,frame+dome+1))
+    frmRange = wrapFrame(np.arange(frame-dome,frame+dome+1),frm0=params['start_frm'])
     
     detectDist, mmPerPixel, ff_trans, ff_tilt = loadYamlData(params)
     
@@ -809,6 +817,7 @@ def loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, frame, params, int
         x_pan[1] = max(flip0, flip1)
         # Load and flip the image horizontally
         with h5py.File(fnames[0], 'r') as file:
+            print(file['/imageseries/images'])
             img = file['/imageseries/images'][frame, y_pan[0]:y_pan[1], x_pan[0]:x_pan[1]]
             img = np.fliplr(img)
 
@@ -1077,18 +1086,14 @@ def getROIshapeDex(x_cart, y_cart, ff1_pix, ff2_pix, center, dexShape=DEX_SHAPE)
     tuple
         Shape of the ROI (rows, columns).
     """
-    # Ensure x-coordinates are within bounds
-    if x_cart[0] < ff2_pix[0]: 
-        x_cart[0] = ff2_pix[0]
-    if x_cart[1] > ff1_pix[1]: 
-        x_cart[1] = ff1_pix[1]
+    # Ensure ROI boundaries do not exceed panel limits
+    if x_cart[0] < ff2_pix[0]: x_cart[0] = ff2_pix[0]
+    if x_cart[1] > ff1_pix[1]: x_cart[1] = ff1_pix[1]
+    if y_cart[0] < ff2_pix[2]: y_cart[0] = ff2_pix[2]
+    if y_cart[1] > ff2_pix[3]: y_cart[1] = ff2_pix[3]
 
     # Determine the panel and process accordingly
     if x_cart[0] < center[1]:  # Panel 2
-        if y_cart[0] < ff2_pix[2]: 
-            y_cart[0] = ff2_pix[2]
-        if y_cart[1] > ff2_pix[3]: 
-            y_cart[1] = ff2_pix[3]
         x_pan = x_cart - ff2_pix[0]
         y_pan = y_cart - ff2_pix[2]
 
@@ -1099,10 +1104,6 @@ def getROIshapeDex(x_cart, y_cart, ff1_pix, ff2_pix, center, dexShape=DEX_SHAPE)
         y_pan[0] = min(flip0, flip1)
         y_pan[1] = max(flip0, flip1)
     elif x_cart[0] > center[1]:  # Panel 1
-        if y_cart[0] < ff1_pix[2]: 
-            y_cart[0] = ff1_pix[2]
-        if y_cart[1] > ff1_pix[3]: 
-            y_cart[1] = ff1_pix[3]
         x_pan = x_cart - ff1_pix[0]
         y_pan = y_cart - ff1_pix[2]
 
@@ -1220,7 +1221,7 @@ def bilinearInterpMatrix(roiShape, rad_dom, eta_dom, center, detectDist):
     
     return Ainterp
 
-def panelPixelsDex(ff_trans, mmPerPixel, imSize=(4888, 7300), dexShape=DEX_SHAPE):
+def panelPixelsDex(ff_trans, mmPerPixel, imSize, dexShape=DEX_SHAPE):
     """
     Computes pixel boundaries for Dexela detector panels based on flat-field transformations.
 
