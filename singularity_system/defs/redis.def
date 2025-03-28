@@ -1,0 +1,8 @@
+Bootstrap: docker
+From: redis:latest
+
+%post
+    echo "Redis container built"
+
+%runscript
+    exec redis-server --protected-mode no --port 6379

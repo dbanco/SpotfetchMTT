@@ -1,0 +1,30 @@
+Bootstrap: docker
+From: python:3.11-slim
+
+%labels
+    Author Daniel Banco
+    Description: Omega Frame Listener for SpotfetchMTT
+
+%post
+    apt-get update && apt-get install -y \
+        build-essential \
+        gcc \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Install required Python packages
+    pip install --no-cache-dir \
+        redis \
+        watchdog
+
+    mkdir -p /app
+
+%files
+    app/omega_frame_listener.py /app/omega_frame_listener.py
+
+%environment
+    export PYTHONUNBUFFERED=1
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+
+%runscript
+    exec python /app/omega_frame_listener.py

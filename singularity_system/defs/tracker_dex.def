@@ -1,0 +1,43 @@
+Bootstrap: docker
+From: python:3.11-slim
+
+%labels
+    Author Banco
+    Description: Tracker for SpotfetchMTT
+
+%post
+    apt-get update && apt-get install -y \
+        build-essential \
+        git \
+        libpq-dev \
+        libgl1-mesa-glx \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender-dev \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Install Python dependencies
+    pip install --no-cache-dir numpy pandas matplotlib scipy \
+        scikit-learn scikit-image networkx redis psycopg2-binary
+    
+    pip install --no-cache-dir git+https://github.com/hexrd/hexrd.git
+    
+    mkdir -p /tmp/numba_cache
+    mkdir -p /tmp/mpl_cache
+
+%files
+    app/tracker_dex.py /app/tracker_dex.py
+    ../utilities.py /app/utilities.py
+    ../mtt_framework /app/mtt_framework
+    ../mtt_system.py /app/mtt_system.py
+
+%environment
+    export PYTHONUNBUFFERED=1
+    export OMEGA_FRAME_DIR=/omega_frames
+    export TRACKER_SAVE_DIR=/tracker_states
+    export NUMBA_CACHE_DIR=/tmp/numba_cache
+    export MPLCONFIGDIR=/tmp/mpl_cache
+
+%runscript
+    exec python /app/tracker_dex.py

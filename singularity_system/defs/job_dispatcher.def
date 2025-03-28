@@ -1,0 +1,43 @@
+Bootstrap: docker
+From: python:3.11-slim
+
+%labels
+    Author Daniel Banco
+    Description: Job Dispatcher for SpotfetchMTT
+
+%post
+    # Install necessary packages
+    apt-get update && apt-get install -y \
+        build-essential \
+        gcc \
+        git \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Install Python libraries
+    pip install --no-cache-dir \
+        redis \
+        numpy \
+        pandas \
+        matplotlib \
+        scipy \
+        scikit-learn
+
+    pip install --no-cache-dir git+https://github.com/hexrd/hexrd.git
+
+    # Copy your shared modules manually if needed
+    # For example: utilities.py and any other dependencies
+    mkdir -p /app
+    mkdir -p /tmp/numba_cache
+
+%files
+    app/job_dispatcher.py /app/job_dispatcher.py
+    ../utilities.py /app/utilities.py
+
+%environment
+    export PYTHONUNBUFFERED=1
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export NUMBA_CACHE_DIR=/tmp/numba_cache
+
+%runscript
+    exec python /app/job_dispatcher.py
