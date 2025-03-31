@@ -389,9 +389,10 @@ def getInterpParamsDexela(tth, eta, params):
     x_cart, y_cart = fetchCartesian(rad_dom, eta_dom, center)
     ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel, imSize)
 
-    new_center = np.array([center[0] - y_cart[0], center[1] - x_cart[0]])
+    
     roiShape = getROIshapeDex(x_cart, y_cart, ff1_pix, ff2_pix, center)
-
+    
+    new_center = np.array([center[0] - y_cart[0], center[1] - x_cart[0]])
     Ainterp = bilinearInterpMatrix(roiShape, rad_dom, eta_dom, new_center, detectDist)
 
     return Ainterp, new_center, x_cart, y_cart
