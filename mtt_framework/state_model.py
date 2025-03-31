@@ -232,9 +232,14 @@ class KalmanModel(StateModel):
         """
         return super().get_measurements(frame, blobs)
 
+    # def compute_gating_distance(self, measurement):
+    #     diff = measurement['com'] - self.state['com']
+    #     return np.dot(diff.T,self.P[:3,:3].dot(diff))
+    
     def compute_gating_distance(self, measurement):
+        
         diff = measurement['com'] - self.state['com']
-        return np.dot(diff.T,self.P[:3,:3].dot(diff))
+        return np.dot(diff.T, diff)
     
     def compute_hypothesis_cost(self, tracks, measurement, event_type):
         """
@@ -347,11 +352,7 @@ class KalmanModel(StateModel):
                               np.log(np.linalg.det(S)) + len(z_m)*np.log(2*np.pi) )
         return loglikelihood
     
-    def compute_gating_distance(self, measurement):
-        
-        diff = measurement['com'] - self.state['com']
-        return np.dot(diff.T, diff)
-    
+
     def compute_hypothesis_cost_euclidean(self, tracks, measurement, event_type):
         """
         Computes the cost associated with a hypothesis based on the event type.

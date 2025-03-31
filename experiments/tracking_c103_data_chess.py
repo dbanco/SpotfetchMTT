@@ -21,7 +21,7 @@ from mtt_system import MTTSystem
 # =============================================================================
 # Setup Dataset
 # =============================================================================
-topPath = r"E:\Data\c103_processing"
+topPath = r"/nfs/chess/user/dbanco/c103_processing"
 dataDir = r"E:\Data\c103"
 
 dataFile = os.path.join(dataDir,"c103-1-ff-1_*_EIG16M_CdTe_{num2:0>6}.h5")
@@ -90,14 +90,12 @@ for scan, fname in enumerate(dataFileSequence):
     # Collect data series
     full_data[scan] = data
     
-    full_data.append(data)
-    full_data = np.array(full_data)
 # %%
 # =============================================================================
 # Plot Tracks on Data
 # =============================================================================
 scanRange = np.arange(len(dataFileSequence))
 omeRange = np.arange(11)
-mtt.mht_tracker.tree.plot_all_tracks(full_data,scanRange,omeRange,vlim=[0,200])
+mht_tracker.tree.plot_all_tracks(full_data,scanRange,omeRange,vlim=[0,200])
 
 

@@ -1,0 +1,52 @@
+Bootstrap: docker
+From: postgres:15
+
+%labels
+    Author Daniel Banco
+    Description PostgreSQL 15 container for SpotfetchMTT
+
+%post
+    echo "Setting up PostgreSQL container..."
+
+    apt-get update && apt-get install -y bash
+
+    mkdir -p /var/lib/postgresql/data
+    chmod 700 /var/lib/postgresql/data
+
+    # Install PostgreSQL client if needed
+    apt-get install -y postgresql-client
+
+    # Write custom entrypoint
+    cat << EOF > /start_postgres.sh
+#!/bin/bash
+
+DATA_DIR="/var/lib/postgresql/data"
+PG_CONF="\$DATA_DIR/postgresql.conf"
+HBA_CONF="\$DATA_DIR/pg_hba.conf"
+
+# Initialize DB if not already initialized
+if [ ! -f "\$PG_CONF" ]; then
+    echo "Initializing database..."
+    echo "yourpassword" > /tmp/pwfile
+    initdb -D "\$DATA_DIR" --username=dbanco --pwfile=/tmp/pwfile
+    rm /tmp/pwfile
+
+    echo "host all all 0.0.0.0/0 md5" >> "\$HBA_CONF"
+    echo "listen_addresses = '*'" >> "\$PG_CONF"
+fi
+
+echo "Starting PostgreSQL..."
+exec postgres -D "\$DATA_DIR" -k /tmp
+EOF
+
+    chmod 775 /start_postgres.sh
+    
+%environment
+    export POSTGRES_DB=postgres
+    export POSTGRES_USER=dbanco
+    export POSTGRES_PASSWORD=yourpassword
+    export PGDATA=/var/lib/postgresql/data
+
+%runscript
+    echo "Starting PostgreSQL..."
+    exec /start_postgres.sh
