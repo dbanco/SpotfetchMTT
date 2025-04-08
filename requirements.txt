@@ -1,0 +1,7 @@
+hexrd
+numpy
+scipy
+scikit-image
+matplotlib
+scikit-learn
+networkx
