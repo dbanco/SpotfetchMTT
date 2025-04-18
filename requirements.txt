@@ -1,7 +1,10 @@
 hexrd
+dectris-compression
 numpy
 scipy
 scikit-image
 matplotlib
 scikit-learn
 networkx
+pandas
+h5py
