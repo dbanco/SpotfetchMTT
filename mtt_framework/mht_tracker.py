@@ -54,7 +54,7 @@ class HypothesisTree:
         self.fig, self.axes = None, None
         self.track_id_colors = {}
 
-    def add_node(self, track, scan, measurement_id, parents=None, event_type="persist", cost=0, best=False):
+    def add_node(self, track, scan, measurement_id, parents=None, event_type="persist", cost=0, best=False,track_id=set()):
         """
         Adds a new node to the hypothesis tree.
         - track (StateModel): Track state representation.
@@ -82,6 +82,8 @@ class HypothesisTree:
                     self.next_track_id += 1
                 else:    
                     track_id = set()
+            elif event_type == "split":
+                track_id = track_id
             else:
                 # Merge track IDs from all parent nodes
                 track_id = set.union(*[parent.track_id for parent in parents])
@@ -126,10 +128,14 @@ class HypothesisTree:
         edge_labels = {}
         node_labels = {}
         node_colors = {}
+        
+        
 
         def add_edges(node):
+            colors = [self.get_track_color(tid) for tid in node.track_id]
+            
             if node.best:
-                node_colors[node.hypoth_id] = "red"
+                node_colors[node.hypoth_id] = colors[0]
             else:
                 node_colors[node.hypoth_id] = "lightblue"
             
@@ -151,9 +157,9 @@ class HypothesisTree:
 
         pos = hierarchy_layout(G)
 
-        plt.figure(figsize=(12, 8))
+        fig = plt.figure(figsize=(8, 8))
         nx.draw_networkx(G, pos,
-                         node_size=2000, 
+                         node_size=4000, 
                          node_color=[node_colors.get(n, "lightblue") for n in G.nodes],
                          labels=node_labels,
                          edge_color="gray", font_size=10, 
@@ -162,6 +168,8 @@ class HypothesisTree:
 
         plt.title("Hypothesis Tree (Events: Persist, Overlap, Split, Birth, Death)")
         plt.show()
+        fig_num = plt.get_fignums()[-1]
+        fig.savefig(f"fig_{fig_num}.png", dpi=300)
     
     def get_track_color(self, track_id):
         """Assigns a unique color to each track_id."""
@@ -214,16 +222,73 @@ class HypothesisTree:
                         
         plt.subplots_adjust(wspace=0, hspace=0)
         plt.show()
+        
+    def plot_all_tracks_2D(self, data, time_steps, omeRange, num_cols, vlim=None):
+        """
+        Plots all scans and overlays all tracks detected over time.
+        """
+        num_rows = len(time_steps)//num_cols
+        fig, axes = plt.subplots(num_rows, num_cols, dpi=300,
+                                 figsize=(10,0.3*len(time_steps)), constrained_layout=True)
+        
+        for t_idx, time_step in enumerate(time_steps):
+            slice_data = data[time_step, :, :]
+            col_idx = np.mod(t_idx,num_cols)
+            row_idx = t_idx//num_cols
+            if num_rows == 1:
+                ax = axes[col_idx]
+            else:
+                ax = axes[row_idx,col_idx]
+            if vlim is not None:
+                vmin, vmax = vlim
+                ax.imshow(slice_data, origin='lower', cmap='viridis', vmin= vmin, vmax= vmax)
+            else:
+                ax.imshow(slice_data, origin='lower', cmap='viridis')
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+        
+        for node in self.nodes.values():
+            if node.hypoth_id > -1 and node.best:
+                scan_idx = node.scan
+                bbox = node.track.state['bbox']
+                ax_idx = np.where(time_steps == scan_idx)[0]
+                
+                if len(ax_idx) == 0:
+                    continue
+                col_idx = np.mod(ax_idx[0],num_cols)
+                row_idx = ax_idx[0]//num_cols
+                for ome_i in np.arange(bbox[4],bbox[5]+1):
+                    if num_rows == 1:
+                        ax = axes[col_idx]
+                    else:
+                        ax = axes[row_idx,col_idx]
+                    boxpos = node.track.state['bbox_center']
+                    boxsiz = node.track.state['bbox_size']
+                    colors = [self.get_track_color(tid) for tid in node.track_id]
+                    for j, color in enumerate(colors):
+                        spacing = 1.2*j  # Prevent overlap
+                        rect = plt.Rectangle((boxpos[1] - boxsiz[1]/2 - spacing, 
+                                              boxpos[0] - boxsiz[0]/2 - spacing), 
+                                              boxsiz[1] + 2*spacing, 
+                                              boxsiz[0] + 2*spacing, 
+                                              edgecolor=color, facecolor='none', linewidth=1)
+                        ax.add_patch(rect)
+                        
+        plt.subplots_adjust(wspace=0, hspace=0)
+        plt.show()
 
     
 class MHTTracker:
-    """Multiple Hypothesis Tracker for 3D spot tracking."""
+    """Multiple Hypothesis Testing Tracker for 3D spot tracking."""
  
     def __init__(self, track_model, 
                  intensity_threshold=0,
+                 size_threshold=0,
                  gating_threshold=25,
-                 death_loglikelihood=-100,
-                 birth_loglikelihood=-100,
+                 death_loglikelihood=-500,
+                 birth_loglikelihood=-500,
                  n_scan_pruning=4,
                  birth_death_pruning=True,
                  plot_tree=False):
@@ -238,6 +303,7 @@ class MHTTracker:
         self.current_scan = 0
         self.track_model = track_model
         self.intensity_threshold = intensity_threshold
+        self.size_threshold = size_threshold
         self.gating_threshold = gating_threshold
         self.death_loglikelihood = death_loglikelihood
         self.birth_loglikelihood = birth_loglikelihood
@@ -257,14 +323,18 @@ class MHTTracker:
                     self.tree.visualize_hypothesis_tree()
         else:
             
-            # 1. Filter measurements based on average intensity
-            self.filter_measurements(measurements)
+            # 0.9 Filter measurements based on average intensity
+            measurements = self.filter_measurements(measurements)
+            measurements = self.size_filter_measurements(measurements)
             
             # 1. Gating
             self.gating(measurements)
             
             # 2. Generate, evaluate, prune hypotehses
             self.update_hypothesis_tree()
+            
+            if self.current_scan == 5:
+                print("check here")
             
             if self.plot_tree:
                 self.tree.visualize_hypothesis_tree()
@@ -275,6 +345,7 @@ class MHTTracker:
             # 3. Prediction
             self.prediction()
             
+
             if self.plot_tree:
                 self.tree.visualize_hypothesis_tree()
         
@@ -322,7 +393,18 @@ class MHTTracker:
         Returns:
         - filtered_measurements
         """
-        self.measurements = [m for m in measurements if m["avg_intensity"] >= self.intensity_threshold]
+        return [m for m in measurements if m["avg_intensity"] >= self.intensity_threshold]
+
+    def size_filter_measurements(self, measurements):
+        """
+        Parameters:
+        - measurements (list of measurements)
+        - intensity_threshold : float
+        Returns:
+        - filtered_measurements
+        """
+        return [m for m in measurements if m["bbox_size"][0]*m["bbox_size"][1]*m["bbox_size"][2] >= self.size_threshold]
+
 
     def gating(self, measurements, cov_matrix=None):
         """
@@ -443,42 +525,81 @@ class MHTTracker:
                                        event_type="overlap", 
                                        cost=cost)
 
+    def find_lone_track_ancestor(self, node, tid):
+        """
+        Recursively search all ancestors to find the latest node where:
+        - event_type is 'persist' or 'split'
+        - track_id is exactly {tid}
+        Returns: the first such node found (DFS), or None
+        """
+        if node.track_id == {tid} and node.event_type in ('persist', 'split'):
+            return node
+        for parent in node.parents:
+            found = self.find_lone_track_ancestor(parent, tid)
+            if found:
+                return found
+        return None
+
+    def generate_split_hypotheses(self, track, associated_leaf_nodes, measurement, m_idx):
+        """
+        Identifies all possible split hypotheses given the current tree and measurements.
+        - A split hypothesis is considered when a node with multiple track_ids is associated with multiple measurements.
+        """
+        
+        for node in associated_leaf_nodes:
+            if node.event_type != 'overlap' or len(node.track_id) <= 1:
+                continue  # Only handle actual overlapping tracks
+            
+            tids = list(node.track_id)
+            ancestor_dict = {}
+            
+            # Step 1: Find valid ancestor for each track_id using recursion
+            for tid in tids:
+                ancestor_dict[tid] = self.find_lone_track_ancestor(node, tid)
+
+            # Filter out any track_ids with no valid ancestor
+            ancestor_dict = {tid: anc for tid, anc in ancestor_dict.items() if anc is not None}
+            valid_tids = list(ancestor_dict.keys())
+
+            # Step 2a: Generate individual split hypotheses (one per track)
+            for tid in valid_tids:
+                old_track = copy.deepcopy(ancestor_dict[tid].track)
+                cost = self.track_model.compute_hypothesis_cost(old_track, measurement, 'persist')
+                self.tree.add_node(track=old_track,
+                                   scan=self.current_scan,
+                                   measurement_id=m_idx,
+                                   parents=[node],
+                                   event_type="split",
+                                   cost=cost,
+                                   track_id=tid)
     
-    # def generate_split_hypotheses(self, measurements, cost_function):
-    #     """
-    #     Identifies all possible split hypotheses given the current tree and measurements.
-    #     - A split hypothesis is considered when a node with multiple track_ids is associated with multiple measurements.
-    #     """
-    #     split_hypotheses = []
-    #     for node in self.tree.nodes.values():
-    #         if len(node.track_id) > 1:
-    #             associated_measurements = [m_idx for m_idx in range(len(measurements)) if any(self.m2ta_matrix[m_idx, tid] for tid in node.track_id)]
-    #             if len(associated_measurements) > 1:
-    #                 split_variants = self.generate_possible_splits(node.track_id)
-    #                 for split_group in split_variants:
-    #                     predicted_coms = self.estimate_split_coms(node, split_group, measurements)
-    #                     split_cost = sum(cost_function(predicted_com, measurements[m_idx].com) for predicted_com, m_idx in zip(predicted_coms, associated_measurements))
-    #                     split_hypotheses.append((split_group, [node.hypoth_id], split_cost))
-    #     return split_hypotheses
+            # Step 2b: Generate multi-track split hypotheses (combinations of 2 or more)
+            for subset_size in range(2, len(valid_tids)):
+                for tid_subset in combinations(valid_tids, subset_size):
+                    parent_tracks = [copy.deepcopy(ancestor_dict[tid].track) for tid in tid_subset]
+                    cost = self.track_model.compute_hypothesis_cost(parent_tracks, measurement, 'overlap')
+                    self.tree.add_node(track=copy.deepcopy(track),
+                                       scan=self.current_scan,
+                                       measurement_id=m_idx,
+                                       parents=[node],
+                                       event_type="split",
+                                       cost=cost,
+                                       track_id=tid_subset)
     
     def update_hypothesis_tree(self):
         """
         Updates the hypothesis tree by adding new hypotheses to existing leaf nodes only.
         """
         self.generate_death_hypotheses()
-        # split_hypotheses = self.generate_split_hypotheses(self.measurements, cost_function)
-        
+
         for m_idx, measurement in enumerate(self.measurements):
             track = self.initialize_track(measurement)
             associated_leaf_nodes = self.get_associated_leaf_nodes(m_idx)
             self.generate_persist_hypotheses(track, associated_leaf_nodes, measurement, m_idx)
             self.generate_overlap_hypotheses(track, associated_leaf_nodes, measurement, m_idx)
             self.generate_birth_hypothesis(track,m_idx)
+            # self.generate_split_hypotheses(track, associated_leaf_nodes, measurement, m_idx)
 
-
-            
-        #self.generate_split_hypotheses(associated_leaf_nodes, measurements)            
-    
         self.tree.update_leaf_nodes()
         self.tree.update_live_leaf_nodes()
             
@@ -555,57 +676,13 @@ class MHTTracker:
         # Solve integer linear program
         result = scipy.optimize.linprog(-c, A_eq=A, b_eq=b,
                                         bounds=(0, 1), method='highs')
+        
         if result.success:
             # Assemble selected hypotheses
             selected_hypotheses = [all_hypotheses[i] for i in range(num_hypotheses) if result.x[i] > 0.5]
             return selected_hypotheses, result['ineqlin']['residual']
         else:
             raise ValueError("No valid hypothesis selection found")
-
-    # def generate_possible_splits(self, track_id_set):
-    #     """
-    #     Generate all valid ways to split a merged track into separate track components.
-    #     """
-    #     return list(chain.from_iterable(combinations(track_id_set, r) for r in range(1, len(track_id_set))))
-
-    # def estimate_split_coms(self, node, split_group, measurement_com):
-    #     """
-    #     Estimate future center of mass (CoM) for a split hypothesis.
-        
-    #     - Travels backward in the tree to find independent track CoMs before merging.
-    #     - Uses the first and last overlapping CoM to predict the new track locations.
-    #     """
-    #     previous_coms = []
-        
-    #     # Travel backward to find independent track CoMs
-    #     for track in split_group:
-    #         prev_com = self.find_last_independent_com(node, track)
-    #         previous_coms.append(prev_com)
-    
-    #     first_overlap_com = self.find_first_overlap_com(node)
-    #     last_overlap_com = node.track.state['com']
-    
-    #     # Estimate new CoM positions based on past movement
-    #     movement_vector = last_overlap_com - first_overlap_com
-    #     estimated_split_coms = [prev_com + movement_vector for prev_com in previous_coms]
-    
-    #     return estimated_split_coms
-
-    # def find_last_independent_com(self, node, track_id):
-    #     """
-    #     Find the last center of mass of an individual track before it was merged.
-    #     """
-    #     while any(track_id in parent.track_id for parent in node.parents):
-    #         node = next(parent for parent in node.parents if track_id in parent.track_id)
-    #     return node.track.state['com']
-    
-    # def find_first_overlap_com(self, node):
-    #     """
-    #     Find the first center of mass when tracks initially merged.
-    #     """
-    #     while all(len(parent.track_id) == len(node.track_id) for parent in node.parents):
-    #         node = next(iter(node.parents))  # Move up to the first overlap event
-    #     return node.track.state['com']
     
     def pruning(self):
         """
@@ -618,7 +695,10 @@ class MHTTracker:
             if node.hypoth_id in self.tree.nodes:
                 del self.tree.nodes[node.hypoth_id]
             for parent in node.parents:
-                parent.children.remove(node)  # Use `discard()` to avoid KeyErrors
+                try:
+                    parent.children.remove(node)  # Use `discard()` to avoid KeyErrors
+                except:
+                    print('Node not present')
     
         def recursive_delete(node):
             """Recursively deletes child nodes before deleting the parent."""

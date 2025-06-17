@@ -27,7 +27,8 @@ params = {}
 params['detector'] = 'eiger'
 params['imSize'] = (5000,5000)
 params['yamlFile'] = os.path.join(topPath,"eiger16M_monolith_mruby_062224_FINAL.yml")
-params['roiSize'] = [30,30,11]
+params['roiSize'] = [30,100,1]
+params['start_frm'] = 4
 
 dataFileSequence = util.getDataFileSequence(dataFile,scanRange)   
 

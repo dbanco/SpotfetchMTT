@@ -12,11 +12,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import numpy as np
 from data.synthetic_spot_data import generate_synthetic_data
-from mtt_framework.state_model import BasicModel
 from mtt_framework.state_model import KalmanModel
 from mtt_framework.feature_extraction import BasicFeatureExtractor
 from mtt_framework.detection import ThresholdingDetector
-from mtt_framework.detection import HDoGDetector
+from mtt_framework.detection import MultiscaleHDoGDetector
 from mtt_framework.mht_tracker import MHTTracker
 from mtt_system import MTTSystem
 
@@ -31,9 +30,17 @@ initial_state = {
     'bbox': np.zeros(6)
 }
 
+sigma_sets = np.array([[1,0.5,0],
+                       [1,1,0],
+                       [1.5,2,0],
+                       [1.5**2,2**2,0],
+                       [1.5**3,2**3,0],
+                       [1.5**4,2**4,0]])
+dsigmas = np.array([0.2, 0.2,0])
+
 # Instantiate Detector, Feature Extractor, Track Model
 spot_detector = ThresholdingDetector(threshold=0.1)
-#track_model = BasicModel(initial_state, feature_extractor=BasicFeatureExtractor())
+# spot_detector = MultiscaleHDoGDetector(sigma_sets=sigma_sets,dsigmas=dsigmas)
 track_model= KalmanModel(initial_state, feature_extractor= BasicFeatureExtractor(), process_noise=1e-5, measurement_noise=1e-5, dt=1, )
 mht_tracker = MHTTracker(track_model=track_model,n_scan_pruning=4, plot_tree=True)
 mtt_system = MTTSystem(spot_detector=spot_detector, track_model=track_model, tracker=mht_tracker)

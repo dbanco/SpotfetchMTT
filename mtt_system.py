@@ -58,7 +58,5 @@ class MTTSystem:
         else:
             print("No measurements to track")
             return False  
-        
-  
 
 

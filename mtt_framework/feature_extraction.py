@@ -441,7 +441,11 @@ def compute_principal_components(x, com):
     intensities = x[indices[:, 0], indices[:, 1], indices[:, 2]]  # Extract intensity values
 
     # Compute intensity-weighted mean shift
-    weighted_mean = np.average(indices, axis=0, weights=intensities)  # Weighted by intensity
+    try:
+        weighted_mean = np.average(indices, axis=0, weights=intensities)  # Weighted by intensity
+    except:
+        weighted_mean = 0
+            
     centered_data = indices - weighted_mean  # Center around intensity-weighted mean
 
     # Apply PCA with intensity weighting
