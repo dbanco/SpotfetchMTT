@@ -7,7 +7,7 @@ CONFIG_PATH="/nfs/chess/user/dbanco/SpotfetchMTT/singularity_system/system_confi
 eval $(python3 load_system_config.py "$CONFIG_PATH")
 
 mkdir -p logs
-mkdir "${POSTGRES_DIR}"
+mkdir -p "${POSTGRES_DIR}"
 
 # 1.Launch Redis Locally
 echo "Starting Redis locally..."
