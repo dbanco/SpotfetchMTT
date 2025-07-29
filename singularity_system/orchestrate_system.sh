@@ -3,7 +3,7 @@ set -e
 set -u
 
 # 0. Read in system configuration from YAML file
-CONFIG_PATH="/nfs/chess/user/dbanco/SpotfetchMTT/singularity_system/system_config.yaml"
+CONFIG_PATH="/nfs/chess/user/dbanco/SpotfetchMTT/singularity_system/mtt_config.yaml"
 eval $(python3 load_system_config.py "$CONFIG_PATH")
 
 mkdir -p logs
@@ -44,7 +44,7 @@ apptainer run   --bind "${DETECT_YAML_DIR}":/param_files \
                 --bind "${APP_DIR}/dexela_listener.py":/app/dexela_listener.py \
                 --bind "${SYS_DIR}/utilities.py":/app/utilities.py \
                 "${SIF_DIR}/dexela_listener.sif" \
-                python /app/dexela_listener.py
+                python /app/dexela_listener.py --config "$CONFIG_PATH"
 
 # 6. Stats processor
 apptainer run \
