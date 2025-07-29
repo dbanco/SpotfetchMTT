@@ -17,11 +17,11 @@ detector:
   data_dir: /nfs/chess/raw/2025-1/id3a/shanks-3731-d/ti-2-test
   yaml_dir: /nfs/chess/aux/cycles/2025-1/id3a/shanks-3731-d/reduced_data/parameter_files
   yaml_file: ceo2_dexela_instr_032025.yml
+  starting_scan: 14
+  scan_info_file: rams2-slew_ome
   im_size: [4000, 6500]
   total_ome: 40
   num_eta_regions: 18
-  starting_scan: 14
-  scan_info_file: rams2-slew_ome
   
 rings:
   - name: ring1
