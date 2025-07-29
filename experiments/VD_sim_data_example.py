@@ -7,7 +7,10 @@ Script showing how to load data from different CHESS detectors
 @author: Daniel Banco
 """
 import os
+import sys
 import numpy as np
+# Add the parent directory to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import utilities as util
 
 ###### VD Simulated HEXD data ######
@@ -20,7 +23,8 @@ params = {}
 params['detector'] = 'eiger_sim'
 params['imSize'] = (5000,5000)
 params['yamlFile'] = os.path.join(topPath,'c103_eiger_calibration.yml') #mruby_0401_eiger_calibration
-params['roiSize'] = [30,30,11]
+params['roiSize'] = [30,30,0]
+params['start_frm'] = 4
 
 
 scanRange = np.arange(5)
