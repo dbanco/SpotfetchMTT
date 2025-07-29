@@ -38,7 +38,7 @@ if ! psql -U postgres -d postgres -h /tmp -tc "SELECT 1 FROM pg_roles WHERE roln
   psql -U postgres -d postgres -h /tmp -c "CREATE USER ${USER} WITH PASSWORD 'yourpassword';"
 fi
 
-# 5. Create measurements DB (if missing)
+# 5. Create database if missing
 if ! psql -U postgres -d postgres -h /tmp -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" | grep -q 1; then
   echo "[INFO] Creating database '$DB_NAME'"
   psql -U postgres -d postgres -h /tmp -c "CREATE DATABASE ${DB_NAME} OWNER ${USER};"
