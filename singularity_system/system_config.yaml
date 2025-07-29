@@ -6,6 +6,7 @@ system:
   base_dir: /nfs/chess/user/dbanco/SpotfetchMTT
   sif_dir: sif
   app_dir: app
+  db_name: mtt_db
   postgres_dir: postgres_data
   region_dir: region_files
   tracker_state_dir: tracker_states
