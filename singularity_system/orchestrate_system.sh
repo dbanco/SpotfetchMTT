@@ -15,28 +15,34 @@ tmux has-session -t redis_session 2>/dev/null || \
 tmux new-session -d -s redis_session 'redis-server --bind 0.0.0.0 --port 6379'
 
 # 2. Launch PostgreSQL
+# Initialize DB cluster if needed
 if [ ! -f "$POSTGRES_DIR/PG_VERSION" ]; then
-  echo "Initializing PostgreSQL database cluster at $POSTGRES_DIR..."
+  echo "[INFO] Initializing PostgreSQL cluster at $POSTGRES_DIR"
   initdb -D "$POSTGRES_DIR"
 fi
-# Start up database
-pg_ctl -D "$POSTGRES_DIR" -l "$POSTGRES_DIR/logfile" -o "-k /tmp" start || {
-  echo "Failed to start PostgreSQL"
-  exit 1
-}
-sleep 5
 
-# Ensure 'postgres' superuser exists
-psql -U "$(whoami)" -tc "SELECT 1 FROM pg_roles WHERE rolname = 'postgres'" | grep -q 1 || \
-  createuser -s postgres
+# Start PostgreSQL server
+echo "[INFO] Starting PostgreSQL..."
+pg_ctl -D "$POSTGRES_DIR" -l "$POSTGRES_DIR/logfile" -o "-k /tmp" start
+sleep 5  # wait for startup
 
-# Ensure project user exists
-psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = '${USER}'" | grep -q 1 || \
-  psql -U postgres -c "CREATE USER ${USER} WITH PASSWORD 'password';"
+# Create 'postgres' superuser if missing
+if ! psql -U "$(whoami)" -h /tmp -tc "SELECT 1 FROM pg_roles WHERE rolname = 'postgres'" | grep -q 1; then
+  echo "[INFO] Creating 'postgres' role"
+  createuser -s postgres -h /tmp
+fi
 
-# Ensure measurements DB exists
-psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'measurements'" | grep -q 1 || \
-  psql -U postgres -c "CREATE DATABASE measurements OWNER ${USER};"
+# Create $USER if missing
+if ! psql -U postgres -h /tmp -tc "SELECT 1 FROM pg_roles WHERE rolname = '${USER}'" | grep -q 1; then
+  echo "[INFO] Creating user '$USER'"
+  psql -U postgres -h /tmp -c "CREATE USER ${USER} WITH PASSWORD 'password';"
+fi
+
+# Create measurements DB if missing
+if ! psql -U postgres -h /tmp -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" | grep -q 1; then
+  echo "[INFO] Creating database '$DB_NAME'"
+  psql -U postgres -h /tmp -c "CREATE DATABASE ${DB_NAME} OWNER ${USER};"
+fi
 
 # To check if they are running
 ps aux | grep redis
