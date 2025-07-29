@@ -15,33 +15,33 @@ tmux has-session -t redis_session 2>/dev/null || \
 tmux new-session -d -s redis_session 'redis-server --bind 0.0.0.0 --port 6379'
 
 # 2. Launch PostgreSQL
-# Initialize DB cluster if needed
+# 1. Initialize DB cluster if needed
 if [ ! -f "$POSTGRES_DIR/PG_VERSION" ]; then
   echo "[INFO] Initializing PostgreSQL cluster at $POSTGRES_DIR"
   initdb -D "$POSTGRES_DIR"
 fi
 
-# Start PostgreSQL server
+# 2. Start PostgreSQL
 echo "[INFO] Starting PostgreSQL..."
 pg_ctl -D "$POSTGRES_DIR" -l "$POSTGRES_DIR/logfile" -o "-k /tmp" start
-sleep 5  # wait for startup
+sleep 5
 
-# Create 'postgres' superuser if missing
-if ! psql -U "$(whoami)" -h /tmp -tc "SELECT 1 FROM pg_roles WHERE rolname = 'postgres'" | grep -q 1; then
+# 3. Create postgres superuser (if missing)
+if ! psql -U "$(whoami)" -d postgres -h /tmp -tc "SELECT 1 FROM pg_roles WHERE rolname = 'postgres'" | grep -q 1; then
   echo "[INFO] Creating 'postgres' role"
-  createuser -s postgres -h /tmp
+  createuser -s postgres -h /tmp || echo "[WARN] 'postgres' role may already exist"
 fi
 
-# Create $USER if missing
-if ! psql -U postgres -h /tmp -tc "SELECT 1 FROM pg_roles WHERE rolname = '${USER}'" | grep -q 1; then
+# 4. Create your user (if missing)
+if ! psql -U postgres -d postgres -h /tmp -tc "SELECT 1 FROM pg_roles WHERE rolname = '${USER}'" | grep -q 1; then
   echo "[INFO] Creating user '$USER'"
-  psql -U postgres -h /tmp -c "CREATE USER ${USER} WITH PASSWORD 'password';"
+  psql -U postgres -d postgres -h /tmp -c "CREATE USER ${USER} WITH PASSWORD 'yourpassword';"
 fi
 
-# Create measurements DB if missing
-if ! psql -U postgres -h /tmp -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" | grep -q 1; then
+# 5. Create measurements DB (if missing)
+if ! psql -U postgres -d postgres -h /tmp -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" | grep -q 1; then
   echo "[INFO] Creating database '$DB_NAME'"
-  psql -U postgres -h /tmp -c "CREATE DATABASE ${DB_NAME} OWNER ${USER};"
+  psql -U postgres -d postgres -h /tmp -c "CREATE DATABASE ${DB_NAME} OWNER ${USER};"
 fi
 
 # To check if they are running
