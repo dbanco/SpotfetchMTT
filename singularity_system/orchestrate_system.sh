@@ -3,7 +3,7 @@ set -e
 set -u
 
 # 0. Read in system configuration from YAML file
-CONFIG_PATH="${SYS_DIR}/system_config.yaml"
+CONFIG_PATH="$/nfs/chess/user/dbanco/SpotfetchMTT/singularity_system/system_config.yaml"
 eval $(python3 load_system_config.py "$CONFIG_PATH")
 
 mkdir -p logs
