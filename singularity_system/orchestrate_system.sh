@@ -19,19 +19,24 @@ if [ ! -f "$POSTGRES_DIR/PG_VERSION" ]; then
   echo "Initializing PostgreSQL database cluster at $POSTGRES_DIR..."
   initdb -D "$POSTGRES_DIR"
 fi
-pg_ctl -D "$POSTGRES_DIR" -l "$POSTGRES_DIR/logfile" -o "-k /tmp" start
+# Start up database
+pg_ctl -D "$POSTGRES_DIR" -l "$POSTGRES_DIR/logfile" -o "-k /tmp" start || {
+  echo "Failed to start PostgreSQL"
+  exit 1
+}
 sleep 5
 
+# Ensure 'postgres' superuser exists
 psql -U "$(whoami)" -tc "SELECT 1 FROM pg_roles WHERE rolname = 'postgres'" | grep -q 1 || \
   createuser -s postgres
 
+# Ensure project user exists
 psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = '${USER}'" | grep -q 1 || \
-  psql -U postgres -c "CREATE USER ${USER} WITH PASSWORD 'yourpassword';"
+  psql -U postgres -c "CREATE USER ${USER} WITH PASSWORD 'password';"
 
+# Ensure measurements DB exists
 psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'measurements'" | grep -q 1 || \
   psql -U postgres -c "CREATE DATABASE measurements OWNER ${USER};"
-
-psql -U "${USER}" -d measurements -f "${SYS_DIR}/schema_setup.sql"
 
 # To check if they are running
 ps aux | grep redis

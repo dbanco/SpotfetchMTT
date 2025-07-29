@@ -22,7 +22,7 @@ print(f'export SYS_DIR="{sys_cfg["base_dir"]}"')
 print(f'export SIF_DIR="{sys_cfg["sif_dir"]}"')
 print(f'export APP_DIR="{sys_cfg["app_dir"]}"')
 print(f'export POSTGRES_DIR={sys_cfg["postgres_dir"]}')
-print(f'export REGION_DIR={sys_cfg["region_files"]}')
+print(f'export REGION_DIR={sys_cfg["region_dir"]}')
 print(f'export TRACKER_STATE_DIR={sys_cfg["tracker_state_dir"]}')
 print(f'export NUM_TRACKERS={sys_cfg["num_trackers"]}')
 
