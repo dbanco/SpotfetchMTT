@@ -1,0 +1,34 @@
+system:
+  redis_host: lnx202.classe.cornell.edu
+  redis_port: 6379
+  postgres_host: lnx202.classe.cornell.edu
+  user: dbanco
+  base_dir: /nfs/chess/user/dbanco/SpotfetchMTT
+  sif_dir: sif
+  app_dir: app
+  postgres_dir: postgres_data
+  region_dir: region_files
+  tracker_state_dir: tracker_states
+  num_trackers: 5
+
+detector:
+  name: dexela
+  data_dir: /nfs/chess/raw/2025-1/id3a/shanks-3731-d/ti-2-test
+  yaml_dir: /nfs/chess/aux/cycles/2025-1/id3a/shanks-3731-d/reduced_data/parameter_files
+  yaml_file: ceo2_dexela_instr_032025.yml
+  im_size: [4000, 6500]
+  total_ome: 40
+  num_eta_regions: 18
+  starting_scan: 14
+  scan_info_file: rams2-slew_ome
+  
+rings:
+  - name: ring1
+    tth_deg: 3.63
+    tth_width: 35
+    ome_width: 10
+
+  - name: ring2
+    tth_deg: 4.10
+    tth_width: 40
+    ome_width: 12

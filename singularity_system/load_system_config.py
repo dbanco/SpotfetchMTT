@@ -1,0 +1,33 @@
+import yaml
+import sys
+
+# Read config file from command-line argument
+if len(sys.argv) < 2:
+    print("Usage: python export_env.py <config.yaml>")
+    sys.exit(1)
+
+yaml_file = sys.argv[1]
+
+with open(yaml_file, "r") as f:
+    config = yaml.safe_load(f)
+
+sys_cfg = config["system"]
+detect_cfg = config["detector"]
+
+print(f'export REDIS_HOST="{sys_cfg["redis_host"]}"')
+print(f'export REDIS_PORT={sys_cfg["redis_port"]}')
+print(f'export POSTGRES_HOST="{sys_cfg["postgres_host"]}"')
+print(f'export USER="{sys_cfg["user"]}"')
+print(f'export SYS_DIR="{sys_cfg["base_dir"]}"')
+print(f'export SIF_DIR="{sys_cfg["sif_dir"]}"')
+print(f'export APP_DIR="{sys_cfg["app_dir"]}"')
+print(f'export POSTGRES_DIR={sys_cfg["postgres_dir"]}')
+print(f'export REGION_DIR={sys_cfg["region_files"]}')
+print(f'export TRACKER_STATE_DIR={sys_cfg["tracker_state_dir"]}')
+print(f'export NUM_TRACKERS={sys_cfg["num_trackers"]}')
+
+print(f'export DETECT_YAML_DIR={detect_cfg["yaml_dir"]}')
+print(f'export DATA_DIR={detect_cfg["data_dir"]}')
+
+
+

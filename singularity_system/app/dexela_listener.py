@@ -6,9 +6,12 @@ Created on Thu Mar 13 08:33:36 2025
 """
 import sys
 import os
+import yaml
+import argparse
 
 # Add the parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import time
 import logging
 import json
@@ -20,7 +23,21 @@ import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
+# Constants
 REGION_DIR = "/region_files"
+DEX_DATA = "/dex_data"
+PARAM_DIR = "/param_files"
+JOB_CONFIG_FILE = "job_config.json"
+
+def load_config(path):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+def setup_environment(system_config):
+    os.environ["REDIS_HOST"] = system_config["redis_host"]
+    os.environ["REDIS_PORT"] = str(system_config["redis_port"])
+    os.environ["POSTGRES_HOST"] = system_config["postgres_host"]
+    os.environ["USER"] = system_config["user"]
 
 def wait_for_file_stable(file_path, check_interval=1.0, stable_time=3.0):
     """
@@ -50,13 +67,8 @@ def load_jobs(path):
     if path.endswith(".json"):
         with open(path, "r") as f:
             jobs = json.load(f)
-    elif path.endswith(".py"):
-        spec = importlib.util.spec_from_file_location("job_config", path)
-        job_def = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(job_def)
-        jobs = job_def.generate_jobs()
     else:
-        raise ValueError("Unsupported job input format: must be .json or .py")
+        raise ValueError("Unsupported job input format: must be .json")
     return jobs
 
 def process_files(file1, file2, tth, eta, frames, interp_params, scan):
@@ -93,7 +105,7 @@ def find_ff_files(ff_dir):
         return ff1_list[0], ff2_list[0]
     return None, None
 
-def listen_for_dexela_directories(data_dir, tth, eta, frames, interp_params, scan, scan_info_file, starting_scan):
+def listen_for_dexela_directories(data_dir, tth, eta, frames, interp_params, scan_info_file, starting_scan):
     """
     Monitors `dataDir` for new numbered subdirectories containing
     ff1_XXXXXX.h5 and ff2_XXXXXX.h5 files under ff/.
@@ -173,48 +185,6 @@ def read_scan_info(scan_info_file):
     # Load the data using whitespace as delimiter
     df = pd.read_csv(par_file, sep=r'\s+', header=None, names=col_names)
     return df
-
-# def determine_regions(df,roi_size,num_eta_regions,eta_vals,tth,output_path):
-#     ome_start = df['ome_start_real']
-#     ome_end = df['ome_end_real']
-
-# def generate_jobs(roi_size,total_ome,num_eta_regions,eta_vals,tth,output_path,scan):
-#     region_id = 0
-#     jobs = []
-    
-#     total_eta = roi_size[1]
-#     ome_width = roi_size[2]
-    
-#     eta_width = int(round(total_eta/num_eta_regions))
-    
-#     start_eta = 0   
-
-#     while start_eta < total_eta:
-#         print(start_eta)
-#         for start_ome in np.arange(0,total_ome-ome_width+1,ome_width):
-            
-#             start_frame = start_ome
-#             end_frame = start_ome + ome_width - 1
-            
-#             eta_min = eta_vals[start_eta]
-#             eta_max_ind = min(start_eta + eta_width - 1, total_eta-1)
-#             eta_max = eta_vals[eta_max_ind]
-            
-#             jobs.append({
-#                 "region_id": region_id,
-#                 "scan": scan,
-#                 "start_frame": int(start_frame),
-#                 "end_frame": int(end_frame),
-#                 "eta_inds": [int(start_eta), int(eta_max_ind)],
-#                 "eta": [float(eta_min), float(eta_max)],
-#                 "tth": float(tth),
-#             })
-        
-#             region_id += 1
-#         start_eta += eta_width
-#     with open(output_path, "w") as f:
-#         json.dump(jobs, f, indent=2)
-#     print(f"Wrote {len(jobs)} jobs to {output_path}")
     
 def generate_jobs(roi_size,total_ome,ome_width,num_eta_regions,eta_vals,tth,output_path):
     region_id = 0
@@ -253,73 +223,86 @@ def generate_jobs(roi_size,total_ome,ome_width,num_eta_regions,eta_vals,tth,outp
         json.dump(jobs, f, indent=2)
     print(f"Wrote {len(jobs)} jobs to {output_path}")
 
-if __name__ == "__main__":
-    # topPath = "/nfs/chess/user/dbanco/c103_processing"
-    # dex_dir = "/nfs/chess/user/dbanco/SpotfetchMTT/tracker-deploy-chess/dex_data_test"
-    # dex_dir = r"/nfs/chess/raw/2024-2/id3a/miller-3528-c/c103-1-ff-1"
-    # params['yamlFile'] = os.path.join(topPath,"dexelas_calibrated_ruby_0504_v01.yml")
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
+    args = parser.parse_args()
+
+    config = load_cfg(args.config)
+    system_cfg = config["system"]
+    detector_cfg = config["detector"]
+    rings_cfg = config["rings"]
+
+    setup_environment(system_cfg)
     
-    
-    dex_data = "/dex_data"
-    param_dir = "/param_files"
-    
+    print("\n=== SYSTEM CONFIG ===")
+    for k, v in system_cfg.items():
+        print(f"{k}: {v}")
+
+    print("\n=== DETECTOR CONFIG ===")
+    for k, v in detector_cfg.items():
+        print(f"{k}: {v}")
+
+    for ring in rings_cfg:
+        print(f"\n=== PROCESSING RING: {rings_cfg['name']} ===")
+        print(f"  tth_deg: {rings_cfg['tth_deg']}")
+        print(f"  tth_width: {rings_cfg['tth_width']}")
+        print(f"  ome_width: {rings_cfg['ome_width']}")
+
+    # === Define paths ===
+    dex_data = detector_cfg["dex_data_dir"]
+    param_dir = detector_cfg["detect_yaml_dir"]
+    yaml_file = detector_cfg["yaml_file"]
+    scan_info_file = os.path.join(dex_data, detector_cfg["scan_info_file"])
+
+    # === Detector and ROI parameters ===
     params = {}
-    params['detector'] = 'dexela'
-    params['imSize'] = (4000,6500)
-    params['yamlFile'] = os.path.join(param_dir,'ceo2_dexela_instr_032025.yml')
+    params['detector'] = detector_cfg["name"]
+    params['imSize'] = tuple(detector_cfg["im_size"])
+    params['yamlFile'] = os.path.join(param_dir, yaml_file)
     params['start_frm'] = 0
-    
-    scan = 0
-    eta = 0
-    tth = 3.63*np.pi/180 #degrees
-    tth_width = 35 #pixels
-    ome_width = 10 #frames
-    detector_distance, mm_per_pixel, ff_trans, ff_tilt = util.loadYamlData(params,tth=tth,eta = 0)
-    
-    rad = np.tan(tth)*detector_distance/mm_per_pixel
-    inner_rad = rad - (tth_width-1)/2
-    outer_rad = rad + (tth_width-1)/2
-    deta = 1/outer_rad
-    right_eta_vals = np.arange(-0.8*np.pi/2,0.8*np.pi/2,deta)
-    num_right_eta = len(right_eta_vals)
-    
-    num_eta_regions = 18
-    total_ome = 40
-    frames = [0,total_ome-1]
-    
-    params['roiSize'] = [tth_width,num_right_eta,total_ome]
-    Ainterp, new_center, x_cart, y_cart = util.getInterpParamsDexela(tth, eta, params)
-    interp_params = []
-    interp_params.append(Ainterp)
-    interp_params.append(new_center)
-    interp_params.append(x_cart)
-    interp_params.append(y_cart)
-    
-    job_config_file = "job_config.json"
-    generate_jobs(params['roiSize'],total_ome,ome_width,num_eta_regions,right_eta_vals,tth,job_config_file)
 
-    # params['roiSize'][2] = 8
-    # frames = [0,7]
-    # generate_jobs(params['roiSize'],8,num_eta_regions,right_eta_vals,tth,output_path)
-    
-    starting_scan = 14
-    scan_info_file = os.path.join(dex_data,"rams2-slew_ome")
-    listen_for_dexela_directories(dex_data,tth,eta,frames,interp_params,scan,scan_info_file,starting_scan)
+    # === Define regions of interest for each ring and generate a job for each
+    for ring in rings_cfg:
+        tth = ring["tth_deg"] * np.pi / 180
+        tth_width = ring["tth_width"]
+        ome_width = ring["ome_width"]
 
+        detector_distance, mm_per_pixel, ff_trans, ff_tilt = util.loadYamlData(params, tth=tth, eta=0)
 
-    # x1 = inner_rad*np.cos(right_eta_vals) + params['imSize'][1]/2;
-    # x2 = inner_rad*np.cos(right_eta_vals) + params['imSize'][1]/2;
-    # y1 = outer_rad*np.sin(right_eta_vals) + params['imSize'][0]/2;
-    # y2 = outer_rad*np.sin(right_eta_vals) + params['imSize'][0]/2;
+        rad = np.tan(tth) * detector_distance / mm_per_pixel
+        inner_rad = rad - (tth_width - 1) / 2
+        outer_rad = rad + (tth_width - 1) / 2
+        deta = 1 / outer_rad
+        right_eta_vals = np.arange(-0.8 * np.pi / 2, 0.8 * np.pi / 2, deta)
+        num_right_eta = len(right_eta_vals)
 
-    # plt.figure(figsize=(50, 20))
-    # plt.imshow(img,vmax=500)
-    # plt.plot(x1,y1,'-')
-    # plt.plot(x2,y2,'-')
-    # plt.show()
+        num_eta_regions = detector_cfg["num_eta_regions"]
+        total_ome = detector_cfg["total_ome"]
+        frames = [0, total_ome - 1]
 
-    
-    # ring = util.loadPolarROI(fnames, tth, 0, 100, params)
+        params['roiSize'] = [tth_width, num_right_eta, total_ome]
+
+        Ainterp, new_center, x_cart, y_cart = util.getInterpParamsDexela(tth, 0, params)
+        interp_params = [Ainterp, new_center, x_cart, y_cart]
+
+        job_config_file = "job_config.json"
+        generate_jobs(params['roiSize'], total_ome, ome_width, num_eta_regions, right_eta_vals, tth, job_config_file)
+
+    # Start directory monitoring
+    starting_scan = detector_cfg["starting_scan"]
+    listen_for_dexela_directories(
+        dex_data,
+        tth,
+        eta,
+        frames,
+        interp_params,
+        scan_info_file,
+        starting_scan
+    )
+if __name__ == "__main__":
+    main()
+
 
 
 

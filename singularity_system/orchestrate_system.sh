@@ -2,21 +2,9 @@
 set -e
 set -u
 
-export REDIS_HOST="lnx202.classe.cornell.edu"
-export REDIS_PORT=6379
-export POSTGRESS_HOST="lnx202.classe.cornell.edu"
-USER="dbanco"
-NUM_TRACKERS=5
-
-SPOTFETCH_DIR="/nfs/chess/user/${USER}/SpotfetchMTT"
-SYS_DIR="${SPOTFETCH_DIR}/singularity_system"
-APP_DIR="${SYS_DIR}/app"
-SIF_DIR="${SYS_DIR}/sif"
-POSTGRES_DIR="${SYS_DIR}/postgres_data2"
-REGION_DIR="${SYS_DIR}/region_files"
-TRACKER_STATE_DIR="${SYS_DIR}/tracker_states"
-DETECT_YAML_DIR="/nfs/chess/aux/cycles/2025-1/id3a/shanks-3731-d/reduced_data/parameter_files"
-DEX_DATA_DIR="/nfs/chess/raw/2025-1/id3a/shanks-3731-d/ti-2-test"
+# 0. Read in system configuration from YAML file
+CONFIG_PATH="${SYS_DIR}/system_config.yaml"
+eval $(python3 load_system_config.py "$CONFIG_PATH")
 
 mkdir -p logs
 mkdir "${POSTGRES_DIR}"
@@ -67,7 +55,7 @@ echo "Submitted $NUM_TRACKERS tracker jobs."
                     
 # 5. Data listener
 apptainer run   --bind "${DETECT_YAML_DIR}":/param_files \
-                --bind "${DEX_DATA_DIR}":/dex_data \
+                --bind "${DATA_DIR}":/dex_data \
                 --bind "${REGION_DIR}":/region_files \
                 --bind "${APP_DIR}/dexela_listener.py":/app/dexela_listener.py \
                 --bind "${SPOTFETCH_DIR}/utilities.py":/app/utilities.py \
