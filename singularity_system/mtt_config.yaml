@@ -3,7 +3,7 @@ system:
   redis_port: 6379
   postgres_host: lnx202.classe.cornell.edu
   user: dbanco
-  base_dir: /nfs/chess/user/dbanco/SpotfetchMTT
+  base_dir: /nfs/chess/user/dbanco/SpotfetchMTT/singularity_system
   sif_dir: sif
   app_dir: app
   db_name: mtt_db
