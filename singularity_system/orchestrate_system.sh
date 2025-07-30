@@ -42,7 +42,7 @@ apptainer run   --bind "${DETECT_YAML_DIR}":/param_files \
                 --bind "${DATA_DIR}":/dex_data \
                 --bind "${REGION_DIR}":/region_files \
                 --bind "${APP_DIR}/dexela_listener.py":/app/dexela_listener.py \
-                --bind "${SYS_DIR}/utilities.py":/app/utilities.py \
+                --bind "${MTT_DIR}/utilities.py":/app/utilities.py \
                 "${SIF_DIR}/dexela_listener.sif" \
                 python /app/dexela_listener.py --config "$CONFIG_PATH"
 

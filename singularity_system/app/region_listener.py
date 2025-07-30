@@ -14,9 +14,9 @@ from watchdog.observers.polling import PollingObserver  # Ensure polling mode is
 from watchdog.events import FileSystemEventHandler
 import importlib.util
 
-REDIS_HOST = "lnx7108.classe.cornell.edu"
+REDIS_HOST = "lnx202.classe.cornell.edu"
 REDIS_PORT = 6379
-redis_client = redis.Redis(host="lnx7108.classe.cornell.edu", port=6379, decode_responses=True)
+redis_client = redis.Redis(host="lnx202.classe.cornell.edu", port=6379, decode_responses=True)
 
 REGION_DIR = "/region_files"
 REGION_PATTERN = re.compile(r"region_(\d+)_scan_(\d+)\.npy")

@@ -20,10 +20,10 @@ from mtt_framework.mht_tracker import MHTTracker
 from mtt_framework.state_model import KalmanModel
 
 # Connect to Redis
-redis_client = redis.Redis(host="lnx7108.classe.cornell.edu", port=6379, decode_responses=True)
+redis_client = redis.Redis(host="lnx202.classe.cornell.edu", port=6379, decode_responses=True)
 
 # PostgreSQL connection details
-DB_HOST = "lnx7108.classe.cornell.edu"
+DB_HOST = "lnx202.classe.cornell.edu"
 DB_NAME = "postgres"
 DB_USER = "dbanco"
 DB_PASS = "yourpassword"

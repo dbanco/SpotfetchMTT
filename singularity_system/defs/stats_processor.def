@@ -2,7 +2,7 @@ Bootstrap: docker
 From: python:3.11-slim
 
 %labels
-    Author Daniel BAnco
+    Author Daniel Banco
     Description Streamlit-based Stats Processor for SpotfetchMTT
 
 %post

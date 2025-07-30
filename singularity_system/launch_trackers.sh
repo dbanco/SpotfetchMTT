@@ -1,13 +1,13 @@
 #!/bin/bash
 
-export REDIS_HOST="lnx7108.classe.cornell.edu"
+export REDIS_HOST="lnx202.classe.cornell.edu"
 export REDIS_PORT=6379
-export POSTGRESS_HOST="lnx7108.classe.cornell.edu"
+export POSTGRESS_HOST="lnx202.classe.cornell.edu"
 
 # RUN THIS SCRIPT IN APP_DIR
 SIF_DIR="./sif"
 SPOTFETCH_DIR="/nfs/chess/user/dbanco/SpotfetchMTT"
-APP_DIR="/nfs/chess/user/dbanco/SpotfetchMTT/tracker-deploy-chess"
+APP_DIR="/nfs/chess/user/dbanco/SpotfetchMTT/singularity_system"
 POSTGRES_DIR="${APP_DIR}/postgres_data"
 REGION_DIR="${APP_DIR}/region_files"
 TRACKER_STATE_DIR="${APP_DIR}/tracker_states"
@@ -15,29 +15,28 @@ DETECT_YAML_DIR="/nfs/chess/aux/cycles/2025-1/id3a/shanks-3731-d/reduced_data/pa
 
 ########## --- Launch Redis Locally ---
 #echo "Starting Redis locally..."
-#redis-server --bind 0.0.0.0 --port 6379 &
-#REDIS_PID=$!
+redis-server --bind 0.0.0.0 --port 6379 &
+REDIS_PID=$!
 #sleep 2
 
 ########### --- Launch PostgreSQL Locally ---
 #echo "Starting PostgreSQL locally..."
-#apptainer run \
-#  --bind "$POSTGRES_DIR:/var/lib/postgresql/data" \
-#  "$SIF_DIR/postgres.sif" &
+	apptainer run \
+	  --bind "$POSTGRES_DIR:/var/lib/postgresql/data" \
+	  "$SIF_DIR/postgres.sif" &
 #POSTGRES_PID=$!
 #sleep 5
 
 # To check if they are running do
-# ps aux | grep redis
-# ps aux | grep postgres
+ps aux | grep redis
+ps aux | grep postgres
 
 # 3. Submit Region Listener
 qsub -N region_listener -o logs/region_listener.out -e logs/region_listener.err -b y -cwd \
     -v REDIS_HOST=$REDIS_HOST \
     REDIS_PORT=$REDIS_PORT \
     apptainer exec   --bind region_files:/region_files \
-                     --bind "${SPOTFETCH_DIR}/tracker-deploy-chess/app/region_listener.py":/app/region_listener.py \
-                     --env REDIS_HOST=localhost \
+                     --bind "${SPOTFETCH_DIR}/singularity_system/app/region_listener.py":/app/region_listener.py \
                        sif/region_listener.sif   python /app/region_listener.py
 sleep 10
 
@@ -60,8 +59,8 @@ sleep 5
 #    REDIS_PORT=$REDIS_PORT \
 #    apptainer run   --bind "${DETECT_YAML_DIR}":/param_files \
 #                    --bind "${DEX_DATA_DIR}":/dex_data \
-#                    --bind "${SPOTFETCH_DIR}/tracker-deploy-chess/region_files":/region_files \
-#                    --bind "${SPOTFETCH_DIR}/tracker-deploy-chess/app/dexela_listener.py":/app/dexela_listener.py \
+#                    --bind "${SPOTFETCH_DIR}/singularity_system/region_files":/region_files \
+#                    --bind "${SPOTFETCH_DIR}/singularity_system/app/dexela_listener.py":/app/dexela_listener.py \
 #                    --bind "${SPOTFETCH_DIR}/utilities.py":/app/utilities.py \
 #                    sif/dexela_listener.sif python /app/dexela_listener.py
                     
@@ -72,7 +71,11 @@ DETECT_YAML_DIR="/nfs/chess/aux/cycles/2025-1/id3a/shanks-3731-d/reduced_data/pa
 DEX_DATA_DIR="/nfs/chess/raw/2025-1/id3a/shanks-3731-d/ti-2-test"
 apptainer run   --bind "${DETECT_YAML_DIR}":/param_files \
                 --bind "${DEX_DATA_DIR}":/dex_data \
-                --bind "${SPOTFETCH_DIR}/tracker-deploy-chess/region_files":/region_files \
-                --bind "${SPOTFETCH_DIR}/tracker-deploy-chess/app/dexela_listener.py":/app/dexela_listener.py \
+                --bind "${SPOTFETCH_DIR}/singularity_system/region_files":/region_files \
+                --bind "${SPOTFETCH_DIR}/singularity_system/app/dexela_listener.py":/app/dexela_listener.py \
                 --bind "${SPOTFETCH_DIR}/utilities.py":/app/utilities.py \
                 sif/dexela_listener.sif python /app/dexela_listener.py
+
+# Stats processor
+#apptainer run   --bind "${SPOTFETCH_DIR}/singularity_system/app/stats_processor.py":/app/stats_processor.py sif/stats_processor.sif python /app/stats_processor.py
+

@@ -19,7 +19,7 @@ def fetch_variance_histogram():
         dbname="postgres",
         user="dbanco",
         password="yourpassword",
-        host="lnx7108.classe.cornell.edu"
+        host="lnx202.classe.cornell.edu"
     )
     query = """
     SELECT scan_number, (features->'variance')::jsonb AS var
