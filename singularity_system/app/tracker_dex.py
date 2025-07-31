@@ -29,7 +29,6 @@ DB_USER = "dbanco"
 DB_PASS = "yourpassword"
 
 # File paths
-REGION_DIR = "/region_files"
 TRACKER_SAVE_DIR = "/tracker_states"
 
 # Ensure tracker save directory exists
@@ -48,7 +47,7 @@ def convert_for_json(obj):
         return obj  # Leave as-is
 
 def write_to_database(region_id, track_id, scan_number, state, overlapping, detected=True):
-    """Writes tracking results to PostgreSQL, storing all features as JSON."""
+    """Writes tracking results to PostgreSQL, storing all features as PKL."""
     try:
         conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASS, host=DB_HOST)
         conn.autocommit = True
@@ -177,11 +176,7 @@ def process_region(job):
         
         # Save updated tracker state
         save_mtt_system(mtt_system, region_id)
-        
-        # Create next job
-        job["scan_number"] =  scan_number + 1
-        redis_client.rpush("tracking_jobs", json.dumps(job))
-        
+                
     return success
 
 def fetch_and_process_jobs():
@@ -192,7 +187,7 @@ def fetch_and_process_jobs():
         job_data = redis_client.lpop("tracking_jobs")
 
         if job_data:
-            job = json.loads(job_data)
+            job = pickle.loads(job_data)
 
             print(f"Processing {job}",flush=True)
             success = process_region(job)

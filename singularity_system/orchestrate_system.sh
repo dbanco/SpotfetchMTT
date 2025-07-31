@@ -21,17 +21,10 @@ tmux new-session -d -s redis_session 'redis-server --bind 0.0.0.0 --port 6379'
 ps aux | grep redis
 ps aux | grep postgres
 
-# 3. Submit Region Listener
-qsub -N region_listener -o logs/region_listener.out -e logs/region_listener.err -b y -cwd -v REDIS_HOST="${REDIS_HOST}", REDIS_PORT="${REDIS_PORT}" \
-    apptainer exec \
-      --bind "${REGION_DIR}":/region_files \
-      --bind "${APP_DIR}/region_listener.py":/app/region_listener.py \
-      "$SIF_DIR/region_listener.sif" python /app/region_listener.py
-
 # 4. Launch N tracker jobs
 for i in $(seq 1 $NUM_TRACKERS); do
     qsub -N tracker-$i -o logs/tracker-$i.out -e logs/tracker-$i.err \
-      -v REDIS_HOST="$REDIS_HOST",POSTGRES_HOST="$POSTGRES_HOST" \
+      -v REDIS_HOST="$REDIS_HOST",POSTGRES_HOST="$POSTGRES_HOST",SING_DIR="$SING_DIR" \
       submit_tracker.sh
     sleep 1
 done
@@ -40,7 +33,6 @@ echo "Submitted $NUM_TRACKERS tracker jobs."
 # 5. Data listener
 apptainer exec  --bind "${YAML_DIR}":/param_files \
                 --bind "${DATA_DIR}":/data_dir \
-                --bind "${REGION_DIR}":/region_files \
                 --bind "${APP_DIR}/dexela_listener.py":/app/dexela_listener.py \
                 --bind "${MTT_DIR}/utilities.py":/app/utilities.py \
                 --bind "${CONFIG_PATH}":/app/mtt_config.yaml \
@@ -50,8 +42,8 @@ apptainer exec  --bind "${YAML_DIR}":/param_files \
 echo $! > listener.pid
 
 # 6. Stats processor
-apptainer run \
-  --bind "${APP_DIR}/stats_processor.py":/app/stats_processor.py \
-  "${SIF_DIR}"/stats_processor.sif \
-  python /app/stats_processor.py
+#apptainer run \
+#  --bind "${APP_DIR}/stats_processor.py":/app/stats_processor.py \
+#  "${SIF_DIR}"/stats_processor.sif \
+#  python /app/stats_processor.py
 

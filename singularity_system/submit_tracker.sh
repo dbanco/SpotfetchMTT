@@ -14,7 +14,6 @@ mkdir -p $MPLCONFIGDIR
 
 # Launch container with binding
 apptainer run \
-  --bind /nfs/chess/user/dbanco/SpotfetchMTT/singularity_system/tracker_states:/tracker_states \
-  --bind /nfs/chess/user/dbanco/SpotfetchMTT/singularity_system/region_files:/region_files \
-  --bind /nfs/chess/user/dbanco/SpotfetchMTT/singularity_system/app/tracker_dex.py:/app/tracker_dex.py \
+  --bind "${SING_DIR}/tracker_states":/tracker_states \
+  --bind "${SING_DIR}/app/tracker_dex.py":/app/tracker_dex.py \
   sif/tracker_dex.sif

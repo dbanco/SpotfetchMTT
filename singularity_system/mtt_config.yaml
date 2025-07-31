@@ -11,7 +11,7 @@ system:
   postgres_dir: postgres_data
   region_dir: region_files
   tracker_state_dir: tracker_states
-  num_trackers: 5
+  num_trackers: 3
 
 detector:
   name: dexela
@@ -30,7 +30,7 @@ rings:
     tth_width: 35
     ome_start: 0
     ome_end: 40
-    ome_width: 10
+    ome_size: 10
     eta_start: -180
     eta_end: 180
     num_eta_regions: 4
@@ -41,7 +41,7 @@ rings:
     tth_width: 35
     ome_start: 0
     ome_end: 40
-    ome_width: 10
+    ome_size: 10
     eta_start: -180
     eta_end: 180
     num_eta_regions: 2

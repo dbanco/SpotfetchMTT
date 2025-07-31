@@ -15,11 +15,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import time
 import logging
 import json
+import pickle
 import importlib.util
 import utilities as util
 import numpy as np
 import glob
 import pandas as pd
+import redis
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
@@ -89,6 +91,10 @@ def listen_for_directories(data_dir, scan_info_file, starting_scan, jobs):
     logging.info(f"Listening in {data_dir} for new Dexela directories...")
     scan = 0
     scan_n = starting_scan
+    redis_host = os.environ.get("REDIS_HOST", "localhost")
+    redis_port = int(os.environ.get("REDIS_PORT", 6379))
+    redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+
     while True:
         # Load in scan information to determine next scan to process
         df = read_scan_info(scan_info_file)
@@ -126,8 +132,9 @@ def listen_for_directories(data_dir, scan_info_file, starting_scan, jobs):
             wait_for_file_stable(file2)
 
             try:
-            	update_jobs(jobs, files, scan)
-            	
+                update_jobs(jobs, [file1,file2], scan, redis_client)
+                logging.info(f"{len(jobs)} jobs generated.")
+                
             except Exception as e:
                 logging.error(f"Error processing scan {scan_n}: {e}")
                 # Retry in next loop
@@ -160,12 +167,12 @@ def read_scan_info(scan_info_file):
     df = pd.read_csv(par_file, sep=r'\s+', header=None, names=col_names)
     return df
     
-def update_jobs(jobs, files, scan_number):    
+def update_jobs(jobs, files, scan_number,redis_client):    
     for i in range(len(jobs)):
         jobs[i]["files"] = files
         jobs[i]["scan_number"] = scan_number
-        self.redis.rpush("tracking_jobs", json.dumps(jobs[i]))
-return jobs
+        redis_client.rpush("tracking_jobs", pickle.dumps(jobs[i]))
+    return jobs
 
 def main():
     parser = argparse.ArgumentParser()
@@ -190,7 +197,6 @@ def main():
         print(f"\n=== PROCESSING RING: {ring['name']} ===")
         print(f"  tth_deg: {ring['tth_deg']}")
         print(f"  tth_width: {ring['tth_width']}")
-        print(f"  ome_width: {ring['ome_width']}")
 
     # === Define paths ===
     data_dir = "/data_dir"
@@ -209,7 +215,7 @@ def main():
     region_id = 0
     jobs = []
     for ring in rings_cfg:
-    	# Define ring
+        # Define ring
         tth = ring["tth_deg"] * np.pi / 180
         tth_width = ring["tth_width"]
         ome_start = ring["ome_start"]
@@ -217,45 +223,44 @@ def main():
         ome_size = ring["ome_size"]
         eta_start = np.pi/180*ring["eta_start"]
         eta_end = np.pi/180*ring["eta_end"]
-        num_eta_regions = detector_cfg["num_eta_regions"]
-	
+        num_eta_regions = ring["num_eta_regions"]
+    
         eta_size = (eta_end-eta_start)/num_eta_regions
-        etas = np.linspace(eta_start+eta_size/2,eta_end-eta_sze/2,num_eta_regions)
+        etas = np.linspace(eta_start+eta_size/2,eta_end-eta_size/2,num_eta_regions)
         omes = np.arange(ome_start,ome_size,ome_end)
         for eta in etas:
             for ome in  omes:
                 detector_distance, mm_per_pixel, _, _ = util.loadYamlData(params, tth=tth, eta=eta)
                 rad = np.tan(tth) * detector_distance / mm_per_pixel
                 inner_rad = rad - (tth_width - 1) / 2
-		outer_rad = rad + (tth_width - 1) / 2
-		deta = 1 / outer_rad
-		eta_vals = np.arange(eta_start,eta_end, deta)
-		num_eta = len(eta_vals)
-
-                frames = [0, total_ome - 1]
-
-                params['roiSize'] = [tth_width, num_eta, total_ome]
+                outer_rad = rad + (tth_width - 1) / 2
+                deta = 1 / outer_rad
+                eta_vals = np.arange(eta_start,eta_end, deta)
+                num_eta = len(eta_vals)
+                params['roiSize'] = [tth_width, num_eta, ome_size]
 
                 Ainterp, new_center, x_cart, y_cart = util.getInterpParamsDexela(tth, eta, params)
-		interp_params = [Ainterp, new_center, x_cart, y_cart]
-
-		job_config_file = "job_config.json"
-		
-		job = {
-		"region_id": region_id,
-		"scan_number": 0,
-		"files": []
-		"start_frame": int(ome),
-		"end_frame": int(ome+ome_size),
-		"tth": float(tth),
-		"eta": float(eta),
-		"params": params,
-		"interp_params": interp_params
-	    	}
-
+                interp_params = [Ainterp, new_center, x_cart, y_cart]
+        
+                job = {
+                "region_id": region_id,
+                "scan_number": 0,
+                "files": [],
+                "start_frame": int(ome),
+                "end_frame": int(ome+ome_size),
+                "tth": float(tth),
+                "eta": float(eta),
+                "params": params,
+                "interp_params": interp_params
+                }
+                
+                jobs.append(job)
+                region_id += 1
+        
     # Start directory monitoring
     starting_scan = detector_cfg["starting_scan"]
     listen_for_directories(data_dir,scan_info_file,starting_scan,jobs)
+    
 if __name__ == "__main__":
     main()
 
