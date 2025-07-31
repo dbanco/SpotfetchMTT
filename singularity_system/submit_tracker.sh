@@ -6,8 +6,6 @@
 
 # Define a writable directory on the host
 
-#mkdir -p $TRACKER_STATE_DIR
-
 # Avoid matplotlib cache issues
 export MPLCONFIGDIR=/tmp/mpl_cache
 mkdir -p $MPLCONFIGDIR

@@ -752,76 +752,133 @@ def loadEigerPolarRoi3D(fname,tth,eta,frame,params,interp_params=None):
     
     return roi_polar
 
-def loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, frame, params, interp_params=None, dexShape=DEX_SHAPE):
+# def loadDexPanelROIOLD(x_cart, y_cart, ff1_pix, ff2_pix, fnames, frame, params, interp_params=None, dexShape=DEX_SHAPE):
+#     """
+#     Loads a Region of Interest (ROI) for the Dexela detector in Cartesian coordinates.
+
+#     Parameters:
+#     -----------
+#     x_cart : list or ndarray
+#         X-coordinates of the ROI in the Cartesian system.
+#     y_cart : list or ndarray
+#         Y-coordinates of the ROI in the Cartesian system.
+#     ff1_pix : ndarray
+#         Flat-field parameters for the first panel (right panel).
+#     ff2_pix : ndarray
+#         Flat-field parameters for the second panel (left panel).
+#     fnames : list
+#         List of file names containing panel data.
+#     frame : int
+#         Frame index to load.
+#     params : dict
+#         Dictionary of detector parameters, including image size.
+#     dexShape : tuple, optional
+#         Shape of the Dexela detector, default is DEX_SHAPE.
+
+#     Returns:
+#     --------
+#     ndarray
+#         Loaded ROI image from the specified panel.
+#     """
+#     # Extract image size and calculate the center
+#     imSize = params['imSize']
+#     center = (imSize[0] / 2, imSize[1] / 2)
+
+#     # Ensure ROI boundaries do not exceed panel limits
+#     if x_cart[0] < ff2_pix[0]: x_cart[0] = ff2_pix[0]
+#     if x_cart[1] > ff1_pix[1]: x_cart[1] = ff1_pix[1]
+#     if y_cart[0] < ff2_pix[2]: y_cart[0] = ff2_pix[2]
+#     if y_cart[1] > ff2_pix[3]: y_cart[1] = ff2_pix[3]
+
+#     # Determine which panel the ROI belongs to
+#     if x_cart[0] < center[1]:  # Left panel
+#         # Adjust for panel offsets
+#         x_pan = x_cart - ff2_pix[0]
+#         y_pan = y_cart - ff2_pix[2]
+#         # Account for vertical flipping
+#         midLine = (dexShape[0] - 1) / 2
+#         flip0 = y_pan[0] + 2 * (midLine - y_pan[0])
+#         flip1 = y_pan[1] + 2 * (midLine - y_pan[1])
+#         y_pan[0] = min(flip0, flip1)
+#         y_pan[1] = max(flip0, flip1)
+#         # Load and flip the image vertically
+#         with h5py.File(fnames[1], 'r') as file:
+#             img = file['/imageseries/images'][frame, y_pan[0]:y_pan[1], x_pan[0]:x_pan[1]]
+#             img = np.flipud(img)
+#     elif x_cart[0] > center[1]:  # Right panel
+#         # Adjust for panel offsets
+#         x_pan = x_cart - ff1_pix[0]
+#         y_pan = y_cart - ff1_pix[2]
+#         # Account for horizontal flipping
+#         midLine = (dexShape[1] - 1) / 2
+#         flip0 = x_pan[0] + 2 * (midLine - x_pan[0])
+#         flip1 = x_pan[1] + 2 * (midLine - x_pan[1])
+#         x_pan[0] = min(flip0, flip1)
+#         x_pan[1] = max(flip0, flip1)
+#         # Load and flip the image horizontally
+#         with h5py.File(fnames[0], 'r') as file:
+#             print(file['/imageseries/images'])
+#             img = file['/imageseries/images'][frame, y_pan[0]:y_pan[1], x_pan[0]:x_pan[1]]
+#             img = np.fliplr(img)
+
+#     return img
+
+def loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, frame, params, dexShape=DEX_SHAPE):
     """
-    Loads a Region of Interest (ROI) for the Dexela detector in Cartesian coordinates.
-
-    Parameters:
-    -----------
-    x_cart : list or ndarray
-        X-coordinates of the ROI in the Cartesian system.
-    y_cart : list or ndarray
-        Y-coordinates of the ROI in the Cartesian system.
-    ff1_pix : ndarray
-        Flat-field parameters for the first panel (right panel).
-    ff2_pix : ndarray
-        Flat-field parameters for the second panel (left panel).
-    fnames : list
-        List of file names containing panel data.
-    frame : int
-        Frame index to load.
-    params : dict
-        Dictionary of detector parameters, including image size.
-    dexShape : tuple, optional
-        Shape of the Dexela detector, default is DEX_SHAPE.
-
-    Returns:
-    --------
-    ndarray
-        Loaded ROI image from the specified panel.
+    Load ROI from Dexela detector with support for missing regions (filled with zeros).
+    The ROI is defined in global coordinates.
     """
-    # Extract image size and calculate the center
-    imSize = params['imSize']
-    center = (imSize[0] / 2, imSize[1] / 2)
+    x0, x1 = int(np.floor(x_cart[0])), int(np.ceil(x_cart[1]))
+    y0, y1 = int(np.floor(y_cart[0])), int(np.ceil(y_cart[1]))
+    roi_width = x1 - x0
+    roi_height = y1 - y0
 
-    # Ensure ROI boundaries do not exceed panel limits
-    if x_cart[0] < ff2_pix[0]: x_cart[0] = ff2_pix[0]
-    if x_cart[1] > ff1_pix[1]: x_cart[1] = ff1_pix[1]
-    if y_cart[0] < ff2_pix[2]: y_cart[0] = ff2_pix[2]
-    if y_cart[1] > ff2_pix[3]: y_cart[1] = ff2_pix[3]
+    # Preallocate full output ROI image
+    full_img = np.zeros((roi_height, roi_width), dtype=np.float32)
 
-    # Determine which panel the ROI belongs to
-    if x_cart[0] < center[1]:  # Left panel
-        # Adjust for panel offsets
-        x_pan = x_cart - ff2_pix[0]
-        y_pan = y_cart - ff2_pix[2]
-        # Account for vertical flipping
-        midLine = (dexShape[0] - 1) / 2
-        flip0 = y_pan[0] + 2 * (midLine - y_pan[0])
-        flip1 = y_pan[1] + 2 * (midLine - y_pan[1])
-        y_pan[0] = min(flip0, flip1)
-        y_pan[1] = max(flip0, flip1)
-        # Load and flip the image vertically
-        with h5py.File(fnames[1], 'r') as file:
-            img = file['/imageseries/images'][frame, y_pan[0]:y_pan[1], x_pan[0]:x_pan[1]]
-            img = np.flipud(img)
-    elif x_cart[0] > center[1]:  # Right panel
-        # Adjust for panel offsets
-        x_pan = x_cart - ff1_pix[0]
-        y_pan = y_cart - ff1_pix[2]
-        # Account for horizontal flipping
-        midLine = (dexShape[1] - 1) / 2
-        flip0 = x_pan[0] + 2 * (midLine - x_pan[0])
-        flip1 = x_pan[1] + 2 * (midLine - x_pan[1])
-        x_pan[0] = min(flip0, flip1)
-        x_pan[1] = max(flip0, flip1)
-        # Load and flip the image horizontally
-        with h5py.File(fnames[0], 'r') as file:
-            print(file['/imageseries/images'])
-            img = file['/imageseries/images'][frame, y_pan[0]:y_pan[1], x_pan[0]:x_pan[1]]
+    # Panel bounding boxes in global coordinates: [xmin, xmax, ymin, ymax]
+    panels = [
+        {'file': fnames[0], 'bbox': ff1_pix, 'flip': 'horizontal'},  # Right panel
+        {'file': fnames[1], 'bbox': ff2_pix, 'flip': 'vertical'},    # Left panel
+    ]
+
+    for panel in panels:
+        xmin, xmax, ymin, ymax = map(int, panel['bbox'])
+
+        # Find intersection with ROI
+        ix0 = max(x0, xmin)
+        ix1 = min(x1, xmax)
+        iy0 = max(y0, ymin)
+        iy1 = min(y1, ymax)
+
+        if ix0 >= ix1 or iy0 >= iy1:
+            continue  # No overlap with this panel
+
+        # Indices in the panel image
+        px0 = ix0 - xmin
+        px1 = ix1 - xmin
+        py0 = iy0 - ymin
+        py1 = iy1 - ymin
+
+        # Indices in the ROI canvas
+        cx0 = ix0 - x0
+        cx1 = ix1 - x0
+        cy0 = iy0 - y0
+        cy1 = iy1 - y0
+
+        with h5py.File(panel['file'], 'r') as f:
+            img = f['/imageseries/images'][frame, py0:py1, px0:px1]
+
+        # Apply flip if needed
+        if panel['flip'] == 'horizontal':
             img = np.fliplr(img)
+        elif panel['flip'] == 'vertical':
+            img = np.flipud(img)
 
-    return img
+        # Insert into the full ROI canvas
+        full_img[cy0:cy1, cx0:cx1] = img
+
+    return full_img
 
 def loadEigerPanelROI(x_cart, y_cart, ff1_pix, fname, frame):
     """

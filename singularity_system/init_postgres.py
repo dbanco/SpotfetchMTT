@@ -9,14 +9,14 @@ with open(sys.argv[1], 'r') as f:
     config = yaml.safe_load(f)
 
 sys_cfg = config['system']
-user = sys_cfg['user']
+db_user = sys_cfg['db_user']
 postgres_dir = os.path.join(sys_cfg['base_dir'], sys_cfg['postgres_dir'])
 schema_file = os.path.join(os.environ.get("SYS_DIR", "."), "schema_setup.sql")
 
 # Connection params
 conn_params = {
-    'dbname': 'postgres',
-    'user': os.getlogin(),  # assumes you have peer auth or .pgpass
+    'dbname': sys_cfg["db_name"],
+    'user': db_user
 }
 
 def run_sql(conn, query, params=None):
@@ -42,19 +42,19 @@ except Exception as e:
     sys.exit(1)
 
 # Ensure user exists
-if not role_exists(conn, user):
-    print(f"Creating user: {user}")
-    run_sql(conn, sql.SQL("CREATE USER {} WITH PASSWORD %s").format(sql.Identifier(user)), ['yourpassword'])
+if not role_exists(conn, db_user):
+    print(f"Creating user: {db_user}")
+    run_sql(conn, sql.SQL("CREATE USER {} WITH PASSWORD %s").format(sql.Identifier(db_user)), ['yourpassword'])
 
 # Ensure database exists
 if not db_exists(conn, 'measurements'):
     print("Creating database: measurements")
-    run_sql(conn, sql.SQL("CREATE DATABASE measurements OWNER {}").format(sql.Identifier(user)))
+    run_sql(conn, sql.SQL("CREATE DATABASE measurements OWNER {}").format(sql.Identifier(db_user)))
 
 # Load schema
 print("Loading schema...")
 conn.close()
-conn = psycopg2.connect(dbname='measurements', user=user)
+conn = psycopg2.connect(dbname='measurements', user=db_user)
 with conn.cursor() as cur:
     with open(schema_file, 'r') as f:
         cur.execute(f.read())

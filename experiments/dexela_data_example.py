@@ -42,7 +42,7 @@ rad = np.tan(tth)*detector_distance/mm_per_pixel
 inner_rad = rad - (ring_width-1)/2
 outer_rad = rad + (ring_width-1)/2
 deta = 1/outer_rad
-right_eta_vals = np.arange(-0.8*np.pi/2,0.8*np.pi/2,deta)
+right_eta_vals = np.arange(-0.8*np.pi/2,0.8*np.pi/2,deta) + np.pi/2
 num_right_eta = len(right_eta_vals)
 
 x1 = inner_rad*np.cos(right_eta_vals) + params['imSize'][1]/2;
@@ -59,7 +59,7 @@ plt.plot(x2,y2,'-')
 plt.show()
 
 params['roiSize'] = [ring_width,num_right_eta,ome_width]
-ring = util.loadDexPolarRoi3D(fnames, tth, 0, [0,39], params)
+ring = util.loadDexPolarRoi3D(fnames, tth, np.pi/2, [0,39], params)
 
 plt.figure(figsize=(50, 20))
 plt.imshow(np.sum(ring,2))

@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 set -u
+set -x
 
 # 0. Read in system configuration from YAML file
 CONFIG_PATH="/nfs/chess/user/dbanco/SpotfetchMTT/singularity_system/mtt_config.yaml"
@@ -16,6 +17,7 @@ tmux new-session -d -s redis_session 'redis-server --bind 0.0.0.0 --port 6379'
 
 # 2. Launch PostgreSQL
 ./init_database.sh
+echo "Exit code: $?"
 
 # To check if they are running
 ps aux | grep redis
@@ -24,7 +26,7 @@ ps aux | grep postgres
 # 4. Launch N tracker jobs
 for i in $(seq 1 $NUM_TRACKERS); do
     qsub -N tracker-$i -o logs/tracker-$i.out -e logs/tracker-$i.err \
-      -v REDIS_HOST="$REDIS_HOST",POSTGRES_HOST="$POSTGRES_HOST",SING_DIR="$SING_DIR",CONFIG_PATH="$CONFIG_PATH" \
+      -v REDIS_HOST="$REDIS_HOST",DB_HOST="$DB_HOST",SING_DIR="$SING_DIR",CONFIG_PATH="$CONFIG_PATH" \
       submit_tracker.sh
     sleep 1
 done

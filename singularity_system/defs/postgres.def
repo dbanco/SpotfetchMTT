@@ -27,7 +27,7 @@ HBA_CONF="\$DATA_DIR/pg_hba.conf"
 # Initialize DB if not already initialized
 if [ ! -f "\$PG_CONF" ]; then
     echo "Initializing database..."
-    echo "yourpassword" > /tmp/pwfile
+    echo "password" > /tmp/pwfile
     initdb -D "\$DATA_DIR" --username=dbanco --pwfile=/tmp/pwfile
     rm /tmp/pwfile
 
@@ -42,9 +42,8 @@ EOF
     chmod 775 /start_postgres.sh
     
 %environment
-    export POSTGRES_DB=postgres
     export POSTGRES_USER=dbanco
-    export POSTGRES_PASSWORD=yourpassword
+    export POSTGRES_PASSWORD=password
     export PGDATA=/var/lib/postgresql/data
 
 %runscript

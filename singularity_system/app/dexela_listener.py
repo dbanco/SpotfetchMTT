@@ -36,8 +36,10 @@ def load_config(path):
 def setup_environment(system_config):
     os.environ["REDIS_HOST"] = system_config["redis_host"]
     os.environ["REDIS_PORT"] = str(system_config["redis_port"])
-    os.environ["POSTGRES_HOST"] = system_config["postgres_host"]
-    os.environ["USER"] = system_config["user"]
+    os.environ["DB_HOST"] = system_config["db_host"]
+    os.environ["DB_NAME"] = system_config["db_name"]
+    os.environ["DB_USER"] = system_config["db_user"]
+    os.environ["DB_PWD"] = system_config["db_pwd"]
     redis_client = redis.Redis(host=system_config["redis_host"], port=str(system_config["redis_port"]), decode_responses=False)
     return redis_client
 
