@@ -141,10 +141,15 @@ def process_region(job):
     """Loads frame data, processes it with MTT system, writes results, and saves state."""
     region_id = job["region_id"]
     scan_number = job["scan_number"]
-    data_path = os.path.join(REGION_DIR, f"region_{region_id}_scan_{scan_number}.npy")
+    files = job["files"]
+    tth = job["tth"]
+    eta = job["eta"]
+    frames = np.arange(job["start_frame"],job["end_frame"])
+    params = job["params"]
+    interp_params = job["interp_params"]
     while True:
         try:
-            region = np.load(data_path)
+            region = util.loadDexPolarRoi3D(files, tth, eta, frames, params, interp_params=interp_params)
             break
         except:
             print(f"Load failed: (Scan {scan_number}), Region {region_id}.",flush=True)

@@ -633,7 +633,6 @@ def loadDexPolarRoi3D(fnames, tth, eta, frames, params, interp_params=None):
     # Load Cartesian ROI pixels for each frame
     ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel,imSize=params['imSize'])
     roi3D = np.zeros(roiSize)
-    print(frmRange)
     for i, frm in enumerate(frmRange):
         print([i,frm])
         roi = loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, int(frm), params)

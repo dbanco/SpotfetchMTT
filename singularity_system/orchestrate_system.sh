@@ -38,13 +38,16 @@ done
 echo "Submitted $NUM_TRACKERS tracker jobs."                
                     
 # 5. Data listener
-apptainer run   --bind "${DETECT_YAML_DIR}":/param_files \
-                --bind "${DATA_DIR}":/dex_data \
+apptainer exec  --bind "${YAML_DIR}":/param_files \
+                --bind "${DATA_DIR}":/data_dir \
                 --bind "${REGION_DIR}":/region_files \
                 --bind "${APP_DIR}/dexela_listener.py":/app/dexela_listener.py \
                 --bind "${MTT_DIR}/utilities.py":/app/utilities.py \
+                --bind "${CONFIG_PATH}":/app/mtt_config.yaml \
                 "${SIF_DIR}/dexela_listener.sif" \
-                python /app/dexela_listener.py --config "$CONFIG_PATH"
+                python /app/dexela_listener.py --config /app/mtt_config.yaml \
+                > logs/listener.log 2>&1 &
+echo $! > listener.pid
 
 # 6. Stats processor
 apptainer run \

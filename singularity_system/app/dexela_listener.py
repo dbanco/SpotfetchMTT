@@ -24,10 +24,8 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 # Constants
-REGION_DIR = "/region_files"
 DEX_DATA = "/dex_data"
 PARAM_DIR = "/param_files"
-JOB_CONFIG_FILE = "job_config.json"
 
 def load_config(path):
     with open(path, "r") as f:
@@ -71,28 +69,6 @@ def load_jobs(path):
         raise ValueError("Unsupported job input format: must be .json")
     return jobs
 
-def process_files(file1, file2, tth, eta, frames, interp_params, scan):
-    """
-    Replace with your actual processing logic.
-    """
-    logging.info(f"Processing {file1} and {file2}")
-    # Simulate processing time
-    ring3D = util.loadDexPolarRoi3D([file1,file2], tth, eta, frames, params, 
-                                    interp_params=interp_params)
-    # Load in jobs json
-    jobs = load_jobs("job_config.json")
-    
-    for job in jobs:
-        region_id = job["region_id"]
-        eta_inds = job["eta_inds"]
-        start_frame = job["start_frame"]
-        end_frame = job["end_frame"]
-        roi = ring3D[:,eta_inds[0]:eta_inds[1]+1,start_frame:end_frame+1]
-        outFile = os.path.join(REGION_DIR,f'region_{region_id}_scan_{scan}')
-        np.save(outFile,roi)
-
-    logging.info("Processing complete.")
-
 def find_ff_files(ff_dir):
     """
     Finds ff1_*.h5 and ff2_*.h5 in the given directory.
@@ -105,7 +81,7 @@ def find_ff_files(ff_dir):
         return ff1_list[0], ff2_list[0]
     return None, None
 
-def listen_for_dexela_directories(data_dir, tth, eta, frames, interp_params, scan_info_file, starting_scan):
+def listen_for_directories(data_dir, scan_info_file, starting_scan, jobs):
     """
     Monitors `dataDir` for new numbered subdirectories containing
     ff1_XXXXXX.h5 and ff2_XXXXXX.h5 files under ff/.
@@ -137,8 +113,6 @@ def listen_for_dexela_directories(data_dir, tth, eta, frames, interp_params, sca
                         scan_numbers = df['SCAN_N'].values
                 continue
             
-            # Determine regions to process
-            
             # Get files
             ff_dir = os.path.join(data_dir, str(scan_n), "ff")
             file1, file2 = find_ff_files(ff_dir)
@@ -152,14 +126,14 @@ def listen_for_dexela_directories(data_dir, tth, eta, frames, interp_params, sca
             wait_for_file_stable(file2)
 
             try:
-                process_files(file1, file2, tth, eta, frames, interp_params, scan)
-
+            	update_jobs(jobs, files, scan)
+            	
             except Exception as e:
                 logging.error(f"Error processing scan {scan_n}: {e}")
                 # Retry in next loop
 
             scan += 1
-            # Read what next scan is going to be 
+            # Read what next scan is going to be once the .par file updates
             while True:
                 try:
                     scan_n = scan_numbers[i+1]
@@ -186,49 +160,18 @@ def read_scan_info(scan_info_file):
     df = pd.read_csv(par_file, sep=r'\s+', header=None, names=col_names)
     return df
     
-def generate_jobs(roi_size,total_ome,ome_width,num_eta_regions,eta_vals,tth,output_path):
-    region_id = 0
-    jobs = []
-    
-    total_eta = roi_size[1]
-    
-    eta_width = int(round(total_eta/num_eta_regions))
-    
-    start_eta = 0   
-
-    while start_eta < total_eta:
-        print(start_eta)
-        for start_ome in np.arange(0,total_ome-ome_width+1,ome_width):
-            
-            start_frame = start_ome
-            end_frame = min(start_ome + ome_width - 1, total_ome-1)
-            
-            eta_min = eta_vals[start_eta]
-            eta_max_ind = min(start_eta + eta_width - 1, total_eta-1)
-            eta_max = eta_vals[eta_max_ind]
-            
-            jobs.append({
-                "region_id": region_id,
-                "scan_number": 0,
-                "start_frame": int(start_frame),
-                "end_frame": int(end_frame),
-                "eta_inds": [int(start_eta), int(eta_max_ind)],
-                "eta": [float(eta_min), float(eta_max)],
-                "tth": float(tth),
-            })
-        
-            region_id += 1
-        start_eta += eta_width
-    with open(output_path, "w") as f:
-        json.dump(jobs, f, indent=2)
-    print(f"Wrote {len(jobs)} jobs to {output_path}")
+def update_jobs(jobs, files, scan_number):    
+    for i in range(len(jobs)):
+        jobs[i]["files"] = files
+        jobs[i]["scan_number"] = scan_number
+        self.redis.rpush("tracking_jobs", json.dumps(jobs[i]))
+return jobs
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
     args = parser.parse_args()
-
-    config = load_cfg(args.config)
+    config = load_config(args.config)
     system_cfg = config["system"]
     detector_cfg = config["detector"]
     rings_cfg = config["rings"]
@@ -244,62 +187,75 @@ def main():
         print(f"{k}: {v}")
 
     for ring in rings_cfg:
-        print(f"\n=== PROCESSING RING: {rings_cfg['name']} ===")
-        print(f"  tth_deg: {rings_cfg['tth_deg']}")
-        print(f"  tth_width: {rings_cfg['tth_width']}")
-        print(f"  ome_width: {rings_cfg['ome_width']}")
+        print(f"\n=== PROCESSING RING: {ring['name']} ===")
+        print(f"  tth_deg: {ring['tth_deg']}")
+        print(f"  tth_width: {ring['tth_width']}")
+        print(f"  ome_width: {ring['ome_width']}")
 
     # === Define paths ===
-    dex_data = detector_cfg["dex_data_dir"]
-    param_dir = detector_cfg["detect_yaml_dir"]
+    data_dir = "/data_dir"
+    param_dir = "/param_files"
     yaml_file = detector_cfg["yaml_file"]
-    scan_info_file = os.path.join(dex_data, detector_cfg["scan_info_file"])
+    scan_info_file = os.path.join(data_dir, detector_cfg["scan_info_file"])
 
     # === Detector and ROI parameters ===
     params = {}
     params['detector'] = detector_cfg["name"]
     params['imSize'] = tuple(detector_cfg["im_size"])
     params['yamlFile'] = os.path.join(param_dir, yaml_file)
-    params['start_frm'] = 0
+    params['start_frm'] = detector_cfg["start_frame"]
 
     # === Define regions of interest for each ring and generate a job for each
+    region_id = 0
+    jobs = []
     for ring in rings_cfg:
+    	# Define ring
         tth = ring["tth_deg"] * np.pi / 180
         tth_width = ring["tth_width"]
-        ome_width = ring["ome_width"]
-
-        detector_distance, mm_per_pixel, ff_trans, ff_tilt = util.loadYamlData(params, tth=tth, eta=0)
-
-        rad = np.tan(tth) * detector_distance / mm_per_pixel
-        inner_rad = rad - (tth_width - 1) / 2
-        outer_rad = rad + (tth_width - 1) / 2
-        deta = 1 / outer_rad
-        right_eta_vals = np.arange(-0.8 * np.pi / 2, 0.8 * np.pi / 2, deta)
-        num_right_eta = len(right_eta_vals)
-
+        ome_start = ring["ome_start"]
+        ome_end = ring["ome_end"]
+        ome_size = ring["ome_size"]
+        eta_start = np.pi/180*ring["eta_start"]
+        eta_end = np.pi/180*ring["eta_end"]
         num_eta_regions = detector_cfg["num_eta_regions"]
-        total_ome = detector_cfg["total_ome"]
-        frames = [0, total_ome - 1]
+	
+        eta_size = (eta_end-eta_start)/num_eta_regions
+        etas = np.linspace(eta_start+eta_size/2,eta_end-eta_sze/2,num_eta_regions)
+        omes = np.arange(ome_start,ome_size,ome_end)
+        for eta in etas:
+            for ome in  omes:
+                detector_distance, mm_per_pixel, _, _ = util.loadYamlData(params, tth=tth, eta=eta)
+                rad = np.tan(tth) * detector_distance / mm_per_pixel
+                inner_rad = rad - (tth_width - 1) / 2
+		outer_rad = rad + (tth_width - 1) / 2
+		deta = 1 / outer_rad
+		eta_vals = np.arange(eta_start,eta_end, deta)
+		num_eta = len(eta_vals)
 
-        params['roiSize'] = [tth_width, num_right_eta, total_ome]
+                frames = [0, total_ome - 1]
 
-        Ainterp, new_center, x_cart, y_cart = util.getInterpParamsDexela(tth, 0, params)
-        interp_params = [Ainterp, new_center, x_cart, y_cart]
+                params['roiSize'] = [tth_width, num_eta, total_ome]
 
-        job_config_file = "job_config.json"
-        generate_jobs(params['roiSize'], total_ome, ome_width, num_eta_regions, right_eta_vals, tth, job_config_file)
+                Ainterp, new_center, x_cart, y_cart = util.getInterpParamsDexela(tth, eta, params)
+		interp_params = [Ainterp, new_center, x_cart, y_cart]
+
+		job_config_file = "job_config.json"
+		
+		job = {
+		"region_id": region_id,
+		"scan_number": 0,
+		"files": []
+		"start_frame": int(ome),
+		"end_frame": int(ome+ome_size),
+		"tth": float(tth),
+		"eta": float(eta),
+		"params": params,
+		"interp_params": interp_params
+	    	}
 
     # Start directory monitoring
     starting_scan = detector_cfg["starting_scan"]
-    listen_for_dexela_directories(
-        dex_data,
-        tth,
-        eta,
-        frames,
-        interp_params,
-        scan_info_file,
-        starting_scan
-    )
+    listen_for_directories(data_dir,scan_info_file,starting_scan,jobs)
 if __name__ == "__main__":
     main()
 

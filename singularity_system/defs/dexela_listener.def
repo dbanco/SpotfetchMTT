@@ -30,7 +30,6 @@ From: python:3.11-slim
     mkdir -p /tmp/numba_cache
 
 %files
-    app/dexela_listener.py /app/dexela_listener.py
     ../utilities.py /app/utilities.py
 
 %environment
