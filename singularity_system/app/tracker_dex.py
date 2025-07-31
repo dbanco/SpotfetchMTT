@@ -9,8 +9,10 @@ import json
 import psycopg2
 import time
 import pickle
+import yaml
 import numpy as np
 import os
+import argparse
 
 import utilities as util
 from mtt_system import MTTSystem
@@ -19,20 +21,17 @@ from mtt_framework.feature_extraction import BasicFeatureExtractor
 from mtt_framework.mht_tracker import MHTTracker
 from mtt_framework.state_model import KalmanModel
 
-# Connect to Redis
-redis_client = redis.Redis(host="lnx202.classe.cornell.edu", port=6379, decode_responses=True)
+def load_config(path):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
 
-# PostgreSQL connection details
-DB_HOST = "lnx202.classe.cornell.edu"
-DB_NAME = "postgres"
-DB_USER = "dbanco"
-DB_PASS = "yourpassword"
-
-# File paths
-TRACKER_SAVE_DIR = "/tracker_states"
-
-# Ensure tracker save directory exists
-os.makedirs(TRACKER_SAVE_DIR, exist_ok=True)
+def setup_environment(system_config):
+    os.environ["REDIS_HOST"] = system_config["redis_host"]
+    os.environ["REDIS_PORT"] = str(system_config["redis_port"])
+    os.environ["POSTGRES_HOST"] = system_config["postgres_host"]
+    os.environ["USER"] = system_config["user"]
+    redis_client = redis.Redis(host=system_config["redis_host"], port=str(system_config["redis_port"]), decode_responses=False)
+    return redis_client
 
 def convert_for_json(obj):
     if isinstance(obj, np.ndarray):
@@ -46,10 +45,14 @@ def convert_for_json(obj):
     else:
         return obj  # Leave as-is
 
-def write_to_database(region_id, track_id, scan_number, state, overlapping, detected=True):
+def write_to_database(config, region_id, track_id, scan_number, state, overlapping, detected=True):
     """Writes tracking results to PostgreSQL, storing all features as PKL."""
     try:
-        conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASS, host=DB_HOST)
+        db_name = config["system"]["db_name"]
+        db_user = config["system"]["db_user"]
+        db_pwd = config["system"]["db_pwd"]
+        db_host = config["system"]["db_host"]
+        conn = psycopg2.connect(dbname=db_name, user=db_user, password=db_pwd, host=db_host)
         conn.autocommit = True
         cursor = conn.cursor()
         
@@ -106,9 +109,9 @@ def write_to_database(region_id, track_id, scan_number, state, overlapping, dete
     except Exception as e:
         print(f"Database write error: {e}")
 
-def load_mtt_system(scan_number, region_id):
+def load_mtt_system(scan_number, region_id, tracker_dir):
     """Loads or initializes an MTT system for the given scan number."""
-    tracker_file = os.path.join(TRACKER_SAVE_DIR, f"tracker_region_{region_id}.pkl")
+    tracker_file = os.path.join(tracker_dir, f"tracker_region_{region_id}.pkl")
 
     if scan_number == 0 or not os.path.exists(tracker_file):
         print(f"Initializing new tracker for Region {region_id}.",flush=True)
@@ -128,15 +131,15 @@ def load_mtt_system(scan_number, region_id):
 
     return mtt_system
 
-def save_mtt_system(mtt_system, region_id):
+def save_mtt_system(mtt_system, region_id, tracker_dir):
     """Saves the current state of the MTT system."""
-    tracker_file = os.path.join(TRACKER_SAVE_DIR, f"tracker_region_{region_id}.pkl")
+    tracker_file = os.path.join(tracker_dir, f"tracker_region_{region_id}.pkl")
     print
     with open(tracker_file, "wb") as f:
         pickle.dump(mtt_system, f)
         print(f"Saved tracker state for Region {region_id}.")
 
-def process_region(job):
+def process_region(job,config):
     """Loads frame data, processes it with MTT system, writes results, and saves state."""
     region_id = job["region_id"]
     scan_number = job["scan_number"]
@@ -157,7 +160,9 @@ def process_region(job):
     print(f"Loaded frames at (Scan {scan_number}) for Region {region_id}.",flush=True)
 
     # Load or initialize tracker
-    mtt_system = load_mtt_system(scan_number, region_id)
+    mtt_dir = config["system"]["mtt_dir"]
+    tracker_dir = os.path.join(mtt_dir,config["system"]["tracker_state_dir"])
+    mtt_system = load_mtt_system(scan_number, region_id, tracker_dir)
 
     # Process the scan
     success = mtt_system.process_frame(region, scan_number)
@@ -172,14 +177,14 @@ def process_region(job):
                 else:
                     overlapping = False
                 for t_id in node.track_id:
-                    write_to_database(region_id, t_id, scan_number, node.track.state, overlapping)
+                    write_to_database(config, region_id, t_id, scan_number, node.track.state, overlapping)
         
         # Save updated tracker state
-        save_mtt_system(mtt_system, region_id)
+        save_mtt_system(mtt_system, region_id, tracker_dir)
                 
     return success
 
-def fetch_and_process_jobs():
+def fetch_and_process_jobs(redis_client, config):
     """Continuously fetches tracking jobs from Redis and processes them."""
     print("Tracker is waiting for jobs...",flush=True)
 
@@ -190,17 +195,21 @@ def fetch_and_process_jobs():
             job = pickle.loads(job_data)
 
             print(f"Processing {job}",flush=True)
-            success = process_region(job)
+            success = process_region(job,config)
             
         else:
             print("🔍 No jobs available, waiting...")
             time.sleep(3)  # Prevent excessive CPU usage
 
 
-def initialize_database():
+def initialize_database(config):
     """Ensures the database schema exists with composite keys for region-based tracking."""
     try:
-        conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASS, host=DB_HOST)
+        db_name = config["system"]["db_name"]
+        db_user = config["system"]["db_user"]
+        db_pwd = config["system"]["db_pwd"]
+        db_host = config["system"]["db_host"]
+        conn = psycopg2.connect(dbname=db_name, user=db_user, password=db_pwd, host=db_host)
         conn.autocommit = True
         cursor = conn.cursor()
 
@@ -268,8 +277,22 @@ def initialize_database():
         print(f"Database initialization error: {e}")
 
 if __name__ == "__main__":
-    initialize_database()
-    fetch_and_process_jobs()
+    # Args
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
+    args = parser.parse_args()
+    # Config
+    config = load_config(args.config)
+    system_cfg = config["system"]
+    redis_client = setup_environment(system_cfg)
+    
+    mtt_dir = config["system"]["mtt_dir"]
+    tracker_dir = os.path.join(mtt_dir,config["system"]["tracker_state_dir"])
+
+    
+    # Start
+    initialize_database(config)
+    fetch_and_process_jobs(redis_client, config)
 
 
 

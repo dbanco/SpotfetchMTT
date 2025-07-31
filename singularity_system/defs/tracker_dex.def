@@ -39,4 +39,4 @@ From: python:3.11-slim
     export MPLCONFIGDIR=/tmp/mpl_cache
 
 %runscript
-    exec python /app/tracker_dex.py
+    exec python /app/tracker_dex.py --config /app/mtt_config.yaml

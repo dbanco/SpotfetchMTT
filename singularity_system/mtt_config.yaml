@@ -1,9 +1,10 @@
 system:
   redis_host: lnx202.classe.cornell.edu
   redis_port: 6379
-  postgres_host: lnx202.classe.cornell.edu
-  user: dbanco
+  db_host: lnx202.classe.cornell.edu
   db_name: mtt_db
+  db_user: dbanco
+  db_pwd: password
   mtt_dir: /nfs/chess/user/dbanco/SpotfetchMTT
   singularity_dir: singularity_system
   sif_dir: sif

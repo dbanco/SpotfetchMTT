@@ -38,6 +38,8 @@ def setup_environment(system_config):
     os.environ["REDIS_PORT"] = str(system_config["redis_port"])
     os.environ["POSTGRES_HOST"] = system_config["postgres_host"]
     os.environ["USER"] = system_config["user"]
+    redis_client = redis.Redis(host=system_config["redis_host"], port=str(system_config["redis_port"]), decode_responses=False)
+    return redis_client
 
 def wait_for_file_stable(file_path, check_interval=1.0, stable_time=3.0):
     """
@@ -83,7 +85,7 @@ def find_ff_files(ff_dir):
         return ff1_list[0], ff2_list[0]
     return None, None
 
-def listen_for_directories(data_dir, scan_info_file, starting_scan, jobs):
+def listen_for_directories(data_dir, scan_info_file, starting_scan, jobs, redis_client):
     """
     Monitors `dataDir` for new numbered subdirectories containing
     ff1_XXXXXX.h5 and ff2_XXXXXX.h5 files under ff/.
@@ -91,9 +93,6 @@ def listen_for_directories(data_dir, scan_info_file, starting_scan, jobs):
     logging.info(f"Listening in {data_dir} for new Dexela directories...")
     scan = 0
     scan_n = starting_scan
-    redis_host = os.environ.get("REDIS_HOST", "localhost")
-    redis_port = int(os.environ.get("REDIS_PORT", 6379))
-    redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
 
     while True:
         # Load in scan information to determine next scan to process
@@ -183,7 +182,7 @@ def main():
     detector_cfg = config["detector"]
     rings_cfg = config["rings"]
 
-    setup_environment(system_cfg)
+    redis_client = setup_environment(system_cfg)
     
     print("\n=== SYSTEM CONFIG ===")
     for k, v in system_cfg.items():
@@ -259,7 +258,7 @@ def main():
         
     # Start directory monitoring
     starting_scan = detector_cfg["starting_scan"]
-    listen_for_directories(data_dir,scan_info_file,starting_scan,jobs)
+    listen_for_directories(data_dir,scan_info_file,starting_scan,jobs,redis_client)
     
 if __name__ == "__main__":
     main()

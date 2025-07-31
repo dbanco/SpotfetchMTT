@@ -13,7 +13,9 @@ export MPLCONFIGDIR=/tmp/mpl_cache
 mkdir -p $MPLCONFIGDIR
 
 # Launch container with binding
-apptainer run \
+apptainer exec \
   --bind "${SING_DIR}/tracker_states":/tracker_states \
   --bind "${SING_DIR}/app/tracker_dex.py":/app/tracker_dex.py \
-  sif/tracker_dex.sif
+  --bind "${CONFIG_PATH}":/app/mtt_config.yaml \
+  sif/tracker_dex.sif \
+  python /app/tracker_dex.py --config /app/mtt_config.yaml
