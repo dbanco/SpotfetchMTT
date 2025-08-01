@@ -12,7 +12,7 @@ system:
   postgres_dir: postgres_data
   region_dir: region_files
   tracker_state_dir: tracker_states
-  num_trackers: 3
+  num_trackers: 1
 
 detector:
   name: dexela

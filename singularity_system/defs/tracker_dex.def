@@ -27,7 +27,6 @@ From: python:3.11-slim
     mkdir -p /tmp/mpl_cache
 
 %files
-    ../utilities.py /app/utilities.py
     ../mtt_framework /app/mtt_framework
     ../mtt_system.py /app/mtt_system.py
 

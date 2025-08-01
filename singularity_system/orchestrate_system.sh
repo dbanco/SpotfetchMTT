@@ -26,7 +26,7 @@ ps aux | grep postgres
 # 4. Launch N tracker jobs
 for i in $(seq 1 $NUM_TRACKERS); do
     qsub -N tracker-$i -o logs/tracker-$i.out -e logs/tracker-$i.err \
-      -v REDIS_HOST="$REDIS_HOST",DB_HOST="$DB_HOST",SING_DIR="$SING_DIR",CONFIG_PATH="$CONFIG_PATH" \
+      -v REDIS_HOST="$REDIS_HOST",DB_HOST="$DB_HOST",MTT_DIR="$MTT_DIR",SING_DIR="$SING_DIR",CONFIG_PATH="$CONFIG_PATH",YAML_DIR="$YAML_DIR",DATA_DIR="$DATA_DIR" \
       submit_tracker.sh
     sleep 1
 done

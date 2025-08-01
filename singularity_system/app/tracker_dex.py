@@ -13,6 +13,7 @@ import yaml
 import numpy as np
 import os
 import argparse
+import traceback
 
 import utilities as util
 from mtt_system import MTTSystem
@@ -148,22 +149,23 @@ def process_region(job,config):
     files = job["files"]
     tth = job["tth"]
     eta = job["eta"]
-    frames = np.arange(job["start_frame"],job["end_frame"])
+    frames = [job["start_frame"],job["end_frame"]]
     params = job["params"]
     interp_params = job["interp_params"]
     while True:
         try:
-            region = util.loadDexPolarRoi3D(files, tth, eta, frames, params, interp_params=interp_params)
+            region = util.loadPolarROI3D(files, tth, eta, frames, params, interp_params=interp_params)
             break
-        except:
+        except Exception as e:
             print(f"Load failed: (Scan {scan_number}), Region {region_id}.",flush=True)
+            print(f"Exception: {e}", flush=True)
+            traceback.print_exc()
             time.sleep(1)
         
     print(f"Loaded frames at (Scan {scan_number}) for Region {region_id}.",flush=True)
 
     # Load or initialize tracker
-    mtt_dir = config["system"]["mtt_dir"]
-    tracker_dir = os.path.join(mtt_dir,config["system"]["tracker_state_dir"])
+    tracker_dir = "/tracker_states"
     mtt_system = load_mtt_system(scan_number, region_id, tracker_dir)
 
     # Process the scan
@@ -172,14 +174,14 @@ def process_region(job,config):
 
     # Write results to PostgreSQL
     if success:
-        for node in mtt_system.tracker.tree.leaf_nodes:
-            if node.best and node.scan == scan_number:
-                if len(node.track_id) > 1:
-                    overlapping = True
-                else:
-                    overlapping = False
-                for t_id in node.track_id:
-                    write_to_database(config, region_id, t_id, scan_number, node.track.state, overlapping)
+        #for node in mtt_system.tracker.tree.leaf_nodes:
+        #    if node.best and node.scan == scan_number:
+        #        if len(node.track_id) > 1:
+        #            overlapping = True
+        #        else:
+        #            overlapping = False
+        #        for t_id in node.track_id:
+        #            write_to_database(config, region_id, t_id, scan_number, node.track.state, overlapping)
         
         # Save updated tracker state
         save_mtt_system(mtt_system, region_id, tracker_dir)
@@ -196,7 +198,7 @@ def fetch_and_process_jobs(redis_client, config):
         if job_data:
             job = pickle.loads(job_data)
 
-            print(f"Processing {job}",flush=True)
+            print(f"Processing Region {job['region_id']}, Scan {job['scan_number']}",flush=True)
             success = process_region(job,config)
             
         else:
@@ -289,8 +291,7 @@ if __name__ == "__main__":
     redis_client = setup_environment(system_cfg)
     
     mtt_dir = config["system"]["mtt_dir"]
-    tracker_dir = os.path.join(mtt_dir,config["system"]["tracker_state_dir"])
-
+    tracker_dir = "/tracker_states"
     
     # Start
     initialize_database(config)

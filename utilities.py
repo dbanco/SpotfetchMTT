@@ -615,8 +615,7 @@ def loadDexPolarRoi3D(fnames, tth, eta, frames, params, interp_params=None):
     yamlFile = params['yamlFile']
     roiSize = params['roiSize']
     detectDist, mmPerPixel, ff_trans, ff_tilt = loadYamlDataDexela(yamlFile, tth, eta)
-    print(frames)
-    frmRange = np.arange(frames[0], frames[1] + 1)
+    frmRange = np.arange(frames[0], frames[1])
     
     # Construct radial and eta domains
     rad_dom, eta_dom = polarDomain(detectDist, mmPerPixel, tth, eta, roiSize)
@@ -634,7 +633,6 @@ def loadDexPolarRoi3D(fnames, tth, eta, frames, params, interp_params=None):
     ff1_pix, ff2_pix = panelPixelsDex(ff_trans, mmPerPixel,imSize=params['imSize'])
     roi3D = np.zeros(roiSize)
     for i, frm in enumerate(frmRange):
-        print([i,frm])
         roi = loadDexPanelROI(x_cart, y_cart, ff1_pix, ff2_pix, fnames, int(frm), params)
         roi_polar_vec = Ainterp.dot(roi.flatten())
         roi_polar = np.reshape(roi_polar_vec, roiSize[:2])

@@ -16,6 +16,7 @@ import time
 import logging
 import json
 import pickle
+import copy
 import importlib.util
 import utilities as util
 import numpy as np
@@ -170,7 +171,7 @@ def read_scan_info(scan_info_file):
     
 def update_jobs(jobs, files, scan_number,redis_client):    
     for i in range(len(jobs)):
-        jobs[i]["files"] = files
+        jobs[i]["files"] = files.copy()
         jobs[i]["scan_number"] = scan_number
         redis_client.rpush("tracking_jobs", pickle.dumps(jobs[i]))
     return jobs
@@ -251,8 +252,8 @@ def main():
                 "end_frame": int(ome+ome_size),
                 "tth": float(tth),
                 "eta": float(eta),
-                "params": params,
-                "interp_params": interp_params
+                "params": copy.deepcopy(params),
+                "interp_params": copy.deepcopy(interp_params)
                 }
                 
                 jobs.append(job)
